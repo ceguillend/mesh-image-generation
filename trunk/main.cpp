@@ -2,6 +2,7 @@
 #include"curve.h"
 #include"thinning.h"
 #include"basic_geo.h"
+#include"delaunay.h"
 // source image 
 Mat src_gray;
 
@@ -79,6 +80,7 @@ void method(int, void*)
 /** @function main */
 int main( int argc, char** argv )
 {
+	/*
 	if( argc != 2)
 	{
 		printf("./method [file_name]\n");
@@ -123,6 +125,15 @@ int main( int argc, char** argv )
 
 	/// Wait until user exit program by pressing a key
 	waitKey(0);
+*/
+	
+	int W = 100, H = 100;
+	
+	int n = 6;
+	
+	delaunay dt( W, H);
 
+	dt.plot_points();		
+	
 	return 0;
 }
