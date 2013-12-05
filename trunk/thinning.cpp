@@ -1,4 +1,5 @@
 #include"thinning.h"
+using namespace cv;
 
 /** Thining sub-iteration 1
 *

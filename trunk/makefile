@@ -9,7 +9,7 @@ FLAGS=`pkg-config opencv --cflags`
 LIBS=`pkg-config opencv --libs`
 CC=g++
 	
-all: release
+all: debug 
 
 clean: 
 	rm -rf *.o method
