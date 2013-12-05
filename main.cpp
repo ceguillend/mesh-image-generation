@@ -3,6 +3,9 @@
 #include"thinning.h"
 #include"basic_geo.h"
 #include"delaunay.h"
+
+using namespace std;
+using namespace cv;
 // source image 
 Mat src_gray;
 
@@ -127,13 +130,36 @@ int main( int argc, char** argv )
 	waitKey(0);
 */
 	
-	int W = 100, H = 100;
+	int W = 100000, H = 100000;
 	
 	int n = 6;
 	
 	delaunay dt( W, H);
 
-	dt.plot_points();		
-	
+	//dt.plot_points();		
+
+	/*
+	dt.add_point( point(0,0) );	
+	dt.add_point( point(W,H) );	
+	dt.add_point( point(0,H) );
+	dt.add_point( point(W,0) );
+	dt.add_point( point(W,H/2) );
+	dt.add_point( point(W/2,H) );
+	dt.add_point( point(W/2,H/2) );
+	*/
+	set<pii> used;
+	srand(time(0));
+	for(int i=0;i<1000;++i)
+	{
+		pii tmp(rand()%(W+1), rand()%(H+1));
+		while( used.count(tmp) )
+			tmp = pii (rand()%(W+1), rand()%(H+1));
+		
+	//	printf("(%d, %d)\n", tmp.F, tmp.S);
+		dt.add_point( point( tmp.F, tmp.S ) );
+	}
+	printf("%d %d\n", 1000, dt.size());
+	assert( dt.check() ); 
+//	dt.plot_triangulation();	
 	return 0;
 }

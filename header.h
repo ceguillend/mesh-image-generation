@@ -4,6 +4,7 @@
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
 #include<cstdio>
+#include<set>
 #include<cstdlib>
 #include<queue>
 #include<stack>
@@ -15,8 +16,5 @@
 #define pii pair<int,int>
 #define F first
 #define S second
-using namespace cv;
-using namespace std;
-
 
 #endif

@@ -1,4 +1,6 @@
 #include"basic_geo.h"
+
+using namespace std;
 /**
 * Double comparison
 */
@@ -16,19 +18,43 @@ double sqr(double a)
 	return a*a;
 }
 
+/**
+* Point class
+*/
+
+point::point(){}
+//
+point::point(double x, double y):x(x),y(y){}
+//
+double point::dist(point a) const
+{
+	return sqrt(sqr(x-a.x)+sqr(y-a.y));
+}
+//
+double point::operator^(point a) const
+{
+	return x*a.y-y*a.x;
+}
+//
+point point::operator -(point a) const
+{
+	return point(x-a.x,y-a.y);
+}
+/////
+
 /** Check if the point is inside the circumcircle
 *@param d is the point to be checked
 *@param a,b,c are the points of the triangle in clockwise order
 */
 bool inside_circumcircle(const point& d, const point& a, const point& b, const point& c)
 {
-	D A[3][3];
+	double A[3][3];
 
 	A[0][0] = a.x-d.x; A[0][1] = a.y-d.y; A[0][2] = sqr(a.x)-sqr(d.x)+sqr(a.y)-sqr(d.y);
 	A[1][0] = b.x-d.x; A[1][1] = b.y-d.y; A[1][2] = sqr(b.x)-sqr(d.x)+sqr(b.y)-sqr(d.y);
 	A[2][0] = c.x-d.x; A[2][1] = c.y-d.y; A[2][2] = sqr(c.x)-sqr(d.x)+sqr(c.y)-sqr(d.y);
 
-	D det = +A[0][0]*(A[1][1]*A[2][2]-A[2][1]*A[1][2])
+	double det = +A[0][0]*(A[1][1]*A[2][2]-A[2][1]*A[1][2])
 	        -A[0][1]*(A[1][0]*A[2][2]-A[1][2]*A[2][0])
 		+A[0][2]*(A[1][0]*A[2][1]-A[1][1]*A[2][0]);
 

@@ -1,5 +1,8 @@
 #include "curve.h"
 
+using namespace std;
+using namespace cv;
+
 /** Given the canny image of edges finds the pixel components and simple curves by 8-neighborhood of pixels
 *
 *@param img_edge Image containing a Canny image (CV_8U1)
