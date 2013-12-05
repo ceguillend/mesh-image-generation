@@ -28,29 +28,52 @@ delaunay::delaunay(int W, int H)
 	n_location_operations = 0;
 
 	// big enough triangle
-	pt.push_back( point(2*W,2*H) );
-	pt.push_back( point(2*W,-4*H) );
-	pt.push_back( point(-4*W,2*H) ); // part of the set points
+	pt.push_back( point(1./0.,1./0.) ); // p-2
+	pt.push_back( point(1./0.,1./0.) ); // p-1
+	// p0 : for the previus condition of the values (x,y)
+	//	we can assume it is the  point(W,H)
+	pt.push_back( point(W,H) ); // part of the set points // p0
 
 	// insert that triangle
 	int t = new_triangle();
 	// init outside triangle
-	for(int i=0;i<3;++i)
-		triangle[t][i]=i; // clockwise
 
+	triangle[t][0] = 0; // clockwise
+	triangle[t][1] = 2;
+	triangle[t][2] = 1;
 }
 
 
 /**
 * Check if a point p is inside-or in the border of the triangle in tr[id]
+* it is inside of the triangle on the clowise order if
+* the point is at the right of every edge
 */
 bool delaunay::inside_triangle(int id, const point& p) const
 {
 	for(int i=1;i<4;++i)
 	{
-		const point& a = pt[triangle[id][i-1]],&b = pt[triangle[id][i%3]]; 
-		if( cmp( (b-a)^(p-a),0 ) > 0)
-			return 0;
+		int p_i = triangle[id][i-1], p_j = triangle[id][i%3];
+		// p_i -> p_j
+			
+		if( p_i>1 && p_j>1 )
+		{ // geometrically can compare	
+			const point& a = pt[p_i],&b = pt[p_j]; 
+			if( cmp( (b-a)^(p-a),0 ) > 0)
+				return 0;
+		}else if(p_i<=1 && p_j>1)
+		{
+			if(p_i == 0 && p > pt[p_j] ) // p-2
+				return 0;
+			if(p_i == 1 && p < pt[p_j] ) //p-1
+				return 0;
+		}else if(p_i>1 && p_j<=1)
+		{
+			if(p_j == 0 && p < pt[p_i]) //p-2
+				return 0;
+			if(p_j == 1 && p > pt[p_i]) //p-1
+				return 0;
+		}// else p_i<=1 && p_i<=1 the point is inside (always valid)
 	}
 	return 1;
 }
@@ -63,9 +86,15 @@ int delaunay::border_triangle(int id, const point& p) const
 {
 	for(int i=1;i<4;++i)
 	{
-		const point& a = pt[triangle[id][i-1]], &b = pt[triangle[id][i%3]]; 
-		if( cmp( (b-a)^(p-a),0 ) == 0)
-			return i-1;
+		int p_i = triangle[id][i-1], p_j = triangle[id][i%3];
+
+		if(p_i>1 && p_j>1) // if one of the points are the ideal points
+		{		   // then the point obviously doesnt belong to the border
+				   // (by definition) there are no two points colinear with the p-1 and p-2 
+			const point& a = pt[p_i], &b = pt[p_j]; 
+			if( cmp( (b-a)^(p-a),0 ) == 0)
+				return i-1;
+		}
 	}
 	return -1;
 }
@@ -131,6 +160,8 @@ int delaunay::neighbor_edge(int tr_id, int neigh_id) const
 			return i;
 	assert(0); // it always expects a answer
 }
+
+
 /** Checks if the triangle at the given edge satisfies the delaunay property
 * if not it flip the edges and legalize again
 *
@@ -145,8 +176,50 @@ void delaunay::legalize_edge(int tr_id, int ed_id)
 	int ned_id = neighbor_edge(ntr_id, tr_id);
 
 	vector<int>& tri = triangle[tr_id], & ntri = triangle[ntr_id];
+	
+	/**
+	* special case
+	*/
+	int I = triangle[tr_id][ed_id], J = triangle[tr_id][(ed_id+1)%3];
+	int K = triangle[tr_id][(ed_id+2)%3], L = triangle[ntr_id][(ned_id+2)%3];
+	// K is the checker
+	// always > 1
+	assert( K > 1);
+	// at most one point in the edge can be <=1 (artificial)
 
-	if( inside_circumcircle( pt[ntri[(ned_id+2)%3]], pt[tri[0]], pt[tri[1]], pt[tri[2]] ) )
+	bool must_flip;
+	if( I > 1 && J > 1 &&  L > 1 ) // all normal points 
+	{
+		must_flip = inside_circumcircle( pt[ntri[(ned_id+2)%3]], pt[tri[0]], pt[tri[1]], pt[tri[2]] );
+	}else
+	{
+		 if(L > 1) 
+		{ // one of the elements of the edge is a artifitial point
+			if( pt[L] > pt[K] )
+				swap(L, K);
+			// pt[L] < pt[K] //lexicografical orter
+			if( I > J )
+				swap(I,J);
+			// I < J , I have the artificial vertes
+
+			assert( pt[L] < pt[J] && pt[J] < pt[K] );
+			
+			if( I == 1 ) //p-1
+			{
+				must_flip = cmp( (pt[J]-pt[L])^(pt[K]-pt[L]) , 0) < 0 ;// flip only if convex
+			}else // I == 0 // p-1
+			{
+				must_flip = cmp( (pt[J]-pt[L])^(pt[K]-pt[L]) , 0) > 0 ;// flip only if convex
+			}
+		}else
+		{ // L <= 1
+			must_flip = 0;
+		}
+	}
+	//		legal = min(K,L) < min(I,J);
+	
+
+	if( must_flip )
 	{ // ilegal
 		vector<int> tr(2,0), ed(2,0);
 		tr[0] = tr_id;   ed[0] = ed_id;
@@ -347,17 +420,23 @@ void delaunay::plot_points() const
 */
 bool delaunay::check() const
 {
-	vector< vector<int> > adj( pt.size(), vector<int>() ); // graph of points
-
 	for(int i=0;i<triangle.size();++i)
 		if(tree[i].empty()) // leaaf, actual triangle
 		{
 			const vector<int>& tr = triangle[i];
-
-			for(int i=0;i<pt.size();++i)
-				if(i!=tr[0] && i!=tr[1] && i!=tr[2])
-					if( inside_circumcircle(pt[i], pt[tr[0]], pt[tr[1]], pt[tr[2]]) )
-						return 0;
+			if( tr[0] > 1 && tr[1] > 1 && tr[2] > 1 )
+			{
+				for(int j=2;j<pt.size();++j)
+					if(j!=tr[0] && j!=tr[1] && j!=tr[2])
+						if( inside_circumcircle(pt[j], pt[tr[0]], pt[tr[1]], pt[tr[2]]) )
+						{
+							for(int r=0;r<3;++r)
+								printf("(%.2lf %.2lf) ", pt[tr[r]].x, pt[tr[r]].y);
+							puts("");
+							printf("(%.2lf, %.2lf)\n",pt[j].x, pt[j].y);
+							return 0;
+						}
+			}
 		}
 	return 1;
 
@@ -391,7 +470,7 @@ void delaunay::plot_triangulation() const
 	minx = miny = 1./0.;
 	maxx = maxy = -1./0.;
 	//write points
-	for(int i=0;i<pt.size();++i) // not artificial points
+	for(int i=2;i<pt.size();++i) // not artificial points
 	{
 		// point coordinates, type , size
 		fprintf(file, "%lf\t%lf\n", pt[i].x, pt[i].y);
@@ -424,7 +503,7 @@ void delaunay::plot_triangulation() const
 		for(int i=0;i<adj[v].size();++i)
 		{
 			int u=adj[v][i];
-			if( vis[u] != 2) 
+			if( vis[u] != 2 && v>1 && u>1) 
 			{ // show edge
 				fprintf(pf, "set arrow from %lf,%lf to %lf,%lf as 1\n", pt[v].x, pt[v].y, pt[u].x, pt[u].y);
 			}

@@ -19,6 +19,8 @@ class point
 	double dist(point a) const;
 	double operator^(point a) const;
 	point operator -(point a) const;
+	bool operator >(point a) const;
+	bool operator <(point a) const;
 };
 
 

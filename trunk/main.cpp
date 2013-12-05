@@ -130,7 +130,7 @@ int main( int argc, char** argv )
 	waitKey(0);
 */
 	
-	int n = 100000;
+	int n = 100;
 	int W = n, H = n;
 	
 	
@@ -148,19 +148,21 @@ int main( int argc, char** argv )
 	dt.add_point( point(W/2,H/2) );
 	*/
 	set<pii> used;
+	used.insert( pii(W,H) );
+
 	srand(time(0));
 
 	for(int i=0;i<n;++i)
 	{
 		pii tmp(rand()%(W+1), rand()%(H+1));
-		while( used.count(tmp) )
+		while( used.count(tmp) != 0 )
 			tmp = pii (rand()%(W+1), rand()%(H+1));
-		
-	//	printf("(%d, %d)\n", tmp.F, tmp.S);
+		used.insert( tmp );
+		//printf("(%d, %d)\n", tmp.F, tmp.S);
 		dt.add_point( point( tmp.F, tmp.S ) );
 	}
 	printf("N: %d  NT: %d  NLO: %.2lf\n", n, dt.size(), dt.average_location_operations());
-	//assert( dt.check() ); 
-//	dt.plot_triangulation();	
+	dt.plot_triangulation();	
+	assert( dt.check() ); 
 	return 0;
 }
