@@ -40,6 +40,16 @@ point point::operator -(point a) const
 {
 	return point(x-a.x,y-a.y);
 }
+//
+bool point::operator <(point a) const
+{
+	return cmp(y,a.y)<0 || (cmp(y,a.y)==0 && cmp(x,a.x)<0);
+}
+//
+bool point::operator >(point a) const
+{
+	return cmp(y,a.y)>0 || (cmp(y,a.y)==0 && cmp(x,a.x)>0);
+}
 /////
 
 /** Check if the point is inside the circumcircle

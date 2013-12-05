@@ -3,6 +3,20 @@
 
 #include"basic_geo.h"
 
+/** Implements the delaunay triangualtion described at: 							
+
+Computational Geometry: Algorithms and Applications
+Third Edition (March 2008) Chapter 9
+
+* As this is a offline algorithm, this implementation assumes that
+* that the points are given between the rectangle [0:W,0:H]
+* for this particular usage the maximum lexicografical coordinate
+* is going to be p0 = (W,H), and is allays assumed to be part 
+* of the set of points P (that makes the algorithms online)  
+*
+* This can be easily modified to work in an offline mode, just
+* by changing the ingial P0
+*/
 class delaunay
 {
 	private:
