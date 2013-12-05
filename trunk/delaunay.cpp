@@ -24,7 +24,8 @@ int delaunay::new_triangle()
 */
 delaunay::delaunay(int W, int H)
 {
-	// it assumed that (0,0) will be always part of the triangulation
+
+	n_location_operations = 0;
 
 	// big enough triangle
 	pt.push_back( point(2*W,2*H) );
@@ -74,19 +75,22 @@ int delaunay::border_triangle(int id, const point& p) const
 *@return Triangle id (note that this a leaf in the triangle tree)
 *	 If it belongs to an edge it returns any of the neighbouring triangles
 */
-int delaunay::search_triangle(const point& p) const
+int delaunay::search_triangle(const point& p) //const
 {
 	int id = 0; // root
 
 	while( !tree[id].empty() )
 	{
 		int nx = -1;
-		for(int i=0;i<tree[id].size();++i) // for each triangle
+		for(int i=0;i<tree[id].size();++i)
+		{ // for each triangle
+			++n_location_operations; // update this
 			if( inside_triangle(tree[id][i], p) )
 			{
 				nx = tree[id][i];
 				break;
 			}
+		}
 		assert(nx!=-1);
 		id = nx;
 		
@@ -441,7 +445,17 @@ void delaunay::plot_triangulation() const
 
 }
 
+/**
+* Number of created triangles
+*/
 int delaunay::size() const
 {
 	return  triangle.size();
+}
+/**
+* average number of triangles visited on each query
+*/
+double delaunay::average_location_operations() const
+{
+	return ((double)n_location_operations)/(pt.size()-3);
 }

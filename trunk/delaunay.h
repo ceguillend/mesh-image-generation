@@ -21,13 +21,17 @@ class delaunay
 	* Adjacency list of the triangle tree structure (DAG)
 	*/
 	std::vector< std::vector<int> > tree; 
+	/**
+	* Number of triangles visited in all the queries
+	*/
+	int n_location_operations;
 
 	//checking a point containment
 	bool inside_triangle(int id, const point& pt) const;
 	int border_triangle(int id, const point& pt) const;
 
 	//tree functions
-	int search_triangle(const point& pt) const;
+	int search_triangle(const point& pt);// const;
 
 	// update functions
 	int new_triangle();	
@@ -37,6 +41,7 @@ class delaunay
 	void add_point_inside(int tr_id, int pt_id);
 	// query functions
 	int neighbor_edge(int tr_id, int neigh_id) const;
+
 	public :
 	//constructos
 	delaunay();
@@ -48,8 +53,9 @@ class delaunay
 	//ploting functions	
 	void plot_points() const;
 	void plot_triangulation() const;
-	// handlers
+	// statistics
 	int size() const;
+	double average_location_operations() const;
 };
 
 #endif
