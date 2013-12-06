@@ -7,13 +7,20 @@
 using namespace std;
 using namespace cv;
 // source image 
-Mat src_gray;
 
 //display window
 char window_name[] = "Algorithm";
 
-// src
+// output
 Mat src;
+Mat src_gray; // gray image
+Mat gray_blur; // gray blurred image
+Mat img_canny; // canny edge
+Mat img_edge; // thinned edge
+Mat img_group; // pixel components
+Mat img_curve_px; // curve described by pixels
+Mat img_curve_pt; // simplified curve 
+
 // canny parameters
 int lowThreshold = 40; // variable, 40 good plot
 int const max_lowThreshold = 100;
@@ -28,54 +35,109 @@ int min_cv_len = 0; // show all
 // Algorithm
 int show_phase = 7;
 const int n_phases = 7;
+
+void write_process()
+{
+	imwrite("0_original.png", src);
+	imwrite("1_gray.png", src_gray);
+	imwrite("2_gray_blur.png", gray_blur);
+	imwrite("3_canny.png", img_canny);
+	imwrite("4_thinned.png", img_edge);
+	imwrite("5_pixel_group.png", img_group);
+	imwrite("6_pixel_curves.png", img_curve_px);
+	imwrite("7_pixel_curves_simple.png", img_curve_pt);
+}
+
+void show(int, void*)
+{
+
+	int q=0;
+	if(q++ == show_phase ) 
+		imshow(window_name, src);		
+	if(q++ == show_phase) 
+		imshow(window_name, src_gray);
+	if(q++ == show_phase) 
+		imshow(window_name, gray_blur);
+
+	if(q++ == show_phase) 
+		imshow(window_name, img_canny);
+	if(q++ == show_phase) 
+		imshow(window_name, img_edge);
+
+	if(q++ == show_phase) 
+		imshow(window_name, img_group);
+	if(q++ == show_phase) 
+		imshow(window_name, img_curve_px);
+	if(q++ == show_phase) 
+		imshow(window_name, img_curve_pt);
+}
+
 /**
  * @function CannyThreshold
  * @brief Trackbar callback - Canny thresholds input with a ratio 1:3
  */
 void method(int, void*)
 {
-	int q=0;
-	if(q++ == show_phase ) imshow(window_name, src);		
-	imwrite("0_original.png", src);
-	if(q++ == show_phase) imshow(window_name, src_gray);
-	imwrite("1_gray.png", src_gray);
 	/* Find edge transformation */	
 
-	Mat img_canny, img_edge;
+	//Mat img_canny, img_edge;
 	// Reduce noise with a kernel 3x3
-	blur( src_gray, img_canny, Size(3,3) );
-	//blured image
-	if(q++ == show_phase) imshow(window_name, img_canny);
-	imwrite("2_gray_blur.png", img_canny);
+	blur( src_gray, gray_blur, Size(3,3) );
 	// Canny detector, result img_edge
-	Canny( img_canny, img_canny, lowThreshold, lowThreshold*ratio, kernel_size );
+	Canny( gray_blur, img_canny, lowThreshold, lowThreshold*ratio, kernel_size );
 	// thinning
 	thinning_procedure(img_canny, img_edge);
-	// results
-	if(q++ == show_phase) imshow(window_name, img_canny);
-	imwrite("3_canny.png", img_canny);
-	if(q++ == show_phase) imshow(window_name, img_edge);
-	imwrite("4_thinned.png", img_edge);
+
+	// adds the edge to the borders of the thinned image
+	int nr = img_edge.rows;
+	int nc = img_edge.cols;
+	
+	for(int i=0;i<nr;++i)	
+		img_edge.at<uchar>(i, 0) = img_edge.at<uchar>(i, nc-1) = 255;
+
+	for(int i=0;i<nc;++i)	
+		img_edge.at<uchar>(0, i) = img_edge.at<uchar>(nr-1, i) = 255;
 
 	/* Find curves */
 		
-	vector< vector<pii> > px_curve; // curves of pixels
-	vector< vector<point> > sg_curve; // line segments
-	Mat img_group; // pixel components
-	Mat img_curve_px; // curve described by pixels
-	Mat img_curve_pt; // simplified curve 
+	vector< vector<pii> > px_curve; // curves of pixels (pixel coordinates)
+	vector< vector<point> > sg_curve; // line segments (euclidean coordinates)
+//	Mat img_group; // pixel components
+//	Mat img_curve_px; // curve described by pixels
+//	Mat img_curve_pt; // simplified curve 
 
 	// find pixel curves	
 	find_pixel_curves(img_edge, min_cv_len, px_curve, img_group, img_curve_px);
 	// fing segment curves
 	simplify_curve(px_curve, img_edge.rows, img_edge.cols, max_d, max_len, sg_curve, img_curve_pt);
 	//results
-	if(q++ == show_phase) imshow(window_name, img_group);
-	imwrite("5_pixel_group.png", img_group);
-	if(q++ == show_phase) imshow(window_name, img_curve_px);
-	imwrite("6_pixel_curves.png", img_curve_px);
-	if(q++ == show_phase) imshow(window_name, img_curve_pt);
-	imwrite("7_pixel_curves_simple.png", img_curve_pt);
+
+	// Just builds the delaunay triangulation with the segment points
+	delaunay dt(src.cols, src.rows);
+
+	set<point> pt ; // quarantee unique poinnts
+	pt.insert( point( src.cols, src.rows ) );
+
+	for(int i=0;i<sg_curve.size();++i)
+		for(int j=0;j<sg_curve[i].size();++j)
+		{
+			if( pt.count( sg_curve[i][j] ) == 0 )
+			{
+				dt.add_point( sg_curve[i][j] );
+				pt.insert( sg_curve[i][j] );
+			}
+		}
+		
+	//verifies dt condition
+//	assert( dt.check() );
+	// plot delaunay
+	dt.plot_delaunay(1, 0);		
+	// delaunay info
+	printf("N: %d  NT: %d  NLO: %.2lf\n", dt.npoints(), dt.size(), dt.average_location_operations());
+	// show the image
+	show(0,0);
+	// write process
+//	write_process();
 }
 
 
@@ -83,7 +145,7 @@ void method(int, void*)
 /** @function main */
 int main( int argc, char** argv )
 {
-	/*
+	
 	if( argc != 2)
 	{
 		printf("./method [file_name]\n");
@@ -107,7 +169,7 @@ int main( int argc, char** argv )
 	int ssz = sqrt(sqr(src.rows)+sqr(src.cols));
 
 	/// Create a Trackbar for user to enter threshold
-	createTrackbar( "Phase", window_name, &show_phase, n_phases, method );
+	createTrackbar( "Phase", window_name, &show_phase, n_phases, show );
 	
 	/// Create a Trackbar for user to enter threshold
 	createTrackbar( "3) Min Thres", window_name, &lowThreshold, max_lowThreshold, method );
@@ -128,43 +190,6 @@ int main( int argc, char** argv )
 
 	/// Wait until user exit program by pressing a key
 	waitKey(0);
-*/
-	
-	int n = 100;
-	int W = n, H = n;
-	
-	
-	delaunay dt( W, H);
-
-	//dt.plot_points();		
-
-	/*
-	dt.add_point( point(0,0) );	
-	dt.add_point( point(W,H) );	
-	dt.add_point( point(0,H) );
-	dt.add_point( point(W,0) );
-	dt.add_point( point(W,H/2) );
-	dt.add_point( point(W/2,H) );
-	dt.add_point( point(W/2,H/2) );
-	*/
-	set<pii> used;
-	used.insert( pii(W,H) );
-
-	srand(time(0));
-
-	for(int i=0;i<n;++i)
-	{
-		pii tmp(rand()%(W+1), rand()%(H+1));
-		while( used.count(tmp) != 0 )
-			tmp = pii (rand()%(W+1), rand()%(H+1));
-		used.insert( tmp );
-		//printf("(%d, %d)\n", tmp.F, tmp.S);
-		dt.add_point( point( tmp.F, tmp.S ) );
-	}
-
-	printf("N: %d  NT: %d  NLO: %.2lf\n", n, dt.size(), dt.average_location_operations());
-	dt.plot_triangulation(0);	
-	assert( dt.check() ); 
 
 	return 0;
 }
