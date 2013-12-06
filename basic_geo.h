@@ -1,7 +1,7 @@
 #ifndef BASIC_GEO_H
 #define BASIC_GEO_H
 #include"header.h"
-#define eps 1e-8
+#define eps 1e-7
 
 //double utilities
 double cmp(double a, double b);
@@ -25,6 +25,7 @@ class point
 	point operator/(double a) const;
 	bool operator >(point a) const;
 	bool operator <(point a) const;
+	bool operator ==(point a) const;
 	point ort() const;
 };
 

@@ -418,8 +418,9 @@ void delaunay::plot_points() const
 * Checks if the delaunay triangulation satisfies the delaunay condition
 *O(n^2) bruteforce check
 */
-bool delaunay::check() const
+bool delaunay::check() const 
 {
+
 	for(int i=0;i<triangle.size();++i)
 		if(tree[i].empty()) // leaaf, actual triangle
 		{
@@ -430,10 +431,6 @@ bool delaunay::check() const
 					if(j!=tr[0] && j!=tr[1] && j!=tr[2])
 						if( inside_circumcircle(pt[j], pt[tr[0]], pt[tr[1]], pt[tr[2]]) )
 						{
-							for(int r=0;r<3;++r)
-								printf("(%.2lf %.2lf) ", pt[tr[r]].x, pt[tr[r]].y);
-							puts("");
-							printf("(%.2lf, %.2lf)\n",pt[j].x, pt[j].y);
 							return 0;
 						}
 			}
@@ -442,28 +439,16 @@ bool delaunay::check() const
 
 }
 
-void delaunay::plot_triangulation(bool with_circles) const
+/*
+* All the plotting commands are write on graph.conf
+* to plot the result  just needs to call gnuplot -persist graph.conf
+*
+*/
+void delaunay::plot_delaunay(bool wrong_circles, bool rand_circles) const
 {
 	vector< vector<int> > adj( pt.size(), vector<int>() ); // graph of points
 
-	for(int i=0;i<triangle.size();++i)
-		if(tree[i].empty()) // leaf
-		{
-			for(int j=1;j<4;++j)
-			{
-				int a = triangle[i][j-1], b = triangle[i][j%3];
-				adj[ a ].push_back( b );
-			}
-		}
-	
-	// only for the exterior triangle, adds the double link
-	for(int j=1;j<4;++j)
-	{
-		int a = triangle[0][j-1], b = triangle[0][j%3];
-		adj[ b ].push_back( a );
-	}
-
-	FILE* file = fopen("data_p","w");
+	FILE* file_p = fopen("data_p","w");
 
 	double minx,maxx,miny,maxy;
 
@@ -473,90 +458,116 @@ void delaunay::plot_triangulation(bool with_circles) const
 	for(int i=2;i<pt.size();++i) // not artificial points
 	{
 		// point coordinates, type , size
-		fprintf(file, "%lf\t%lf\n", pt[i].x, pt[i].y);
+		fprintf(file_p, "%lf\t%lf\n", pt[i].x, pt[i].y);
 		minx = min( minx, pt[i].x);
 		maxx = max( maxx, pt[i].x);
 		miny = min( miny, pt[i].y);
 		maxy = max( maxy, pt[i].y);
 	}
-	fclose(file);
+	fclose(file_p);
 
-
-	if(with_circles)
-	{
-		file = fopen("data_c","w"); // circle
-		FILE* file2 = fopen("data_cp","w"); // circle points
-		// plot random circles
-		for(int i=0;i<triangle.size();++i)
-			if(tree[i].empty()) // leaaf, actual triangle
-			{
-				const vector<int>& tr = triangle[i];
-				if( tr[0] > 1 && tr[1] > 1 && tr[2] > 1 )
-				{
-					if( rand()%100 <= 4 ) // 10% of the circles
-					{
-						point ce; double r;
-						circumcircle(pt[tr[0]], pt[tr[1]], pt[tr[2]], ce ,r);
-						fprintf(file, "%.4lf %.4lf %.4lf\n", ce.x, ce.y, r);
-						for(int k=0;k<3;++k)
-							fprintf(file2, "%.4lf %.4lf\n", pt[tr[k]].x, pt[tr[k]].y);
-
-					}
-				}
-			}
-		fclose(file);
-		fclose(file2);
-	}
 	// start the ploting process
 	
 	FILE* pf = fopen("graph.conf", "w");
 	
-	fprintf(pf, "set multiplot\n");
-	fprintf(pf, "set size square\n");	
+//	fprintf(pf, "set multiplot\n");
+//	fprintf(pf, "set size square\n");	
+	fprintf(pf, "set size ratio -1\n"); // same units size
 	fprintf(pf, "set xtic auto\nset ytic auto\n");
 	fprintf(pf, "set title \"Delaunay\" \n set xlabel \"X\"\n");
 	fprintf(pf, "set ylabel \"Y\" \nset pointsize 1\n");
-	double xs = (maxx-minx)*0.2, ys = (maxy-miny)*0.2;
+	double xs = (maxx-minx)*0.1, ys = (maxy-miny)*0.1;
 	fprintf(pf, "set xr [%lf : %lf]\n", minx-xs, maxx+xs);
 	fprintf(pf, "set yr [%lf : %lf]\n", miny-ys, maxy+ys);
 	fprintf(pf, "set style arrow 1 nohead\n");
 
-	// print the graph
-	vector<int> vis(pt.size(),0);
 
-	queue<int> q;
-	q.push(0);
-	while(!q.empty())
-	{
-		int v = q.front();q.pop();
-		for(int i=0;i<adj[v].size();++i)
+	bool invalid = 0;
+
+
+	FILE* file = fopen("data_c","w"); // circle
+	FILE* file2 = fopen("data_cp","w"); // circle points
+	FILE* file3 = fopen("data_invc","w"); // invalid circles
+	FILE* file4 = fopen("data_invp","w"); // invalid points
+
+	for(int i=0;i<triangle.size();++i)
+		if(tree[i].empty()) // leaf
 		{
-			int u=adj[v][i];
-			if( vis[u] != 2 && v>1 && u>1) 
-			{ // show edge
-				fprintf(pf, "set arrow from %lf,%lf to %lf,%lf as 1\n", pt[v].x, pt[v].y, pt[u].x, pt[u].y);
-			}
-			//conquer
-			if( vis[u] == 0 )
+			const vector<int>& tr = triangle[i];
+		
+			//plots adjancency graph
+			for(int j=1;j<4;++j)
 			{
-				vis[u] = 1;
-				q.push(u);
+				if( tr[j-1] > 1 &&  tr[j%3] > 1)
+				{
+					const point& a = pt[tr[j-1]], & b = pt[tr[j%3]];
+					
+					assert( !(a==b));
+					if( a < b )
+					{ // prints only once
+						fprintf(pf, "set arrow from %lf,%lf to %lf,%lf as 1\n", a.x, a.y, b.x, b.y);
+					}
+				}
+			}	
+			
+			if( tr[0] > 1 && tr[1] > 1 && tr[2] > 1 )
+			{ // real points
+				if(rand_circles && rand()%100 <= 4 ) // 10% of the circles
+				{
+					point ce; double r;
+					circumcircle(pt[tr[0]], pt[tr[1]], pt[tr[2]], ce ,r);
+					fprintf(file, "%.4lf %.4lf %.4lf\n", ce.x, ce.y, r);
+					for(int k=0;k<3;++k)
+						fprintf(file2, "%.4lf %.4lf\n", pt[tr[k]].x, pt[tr[k]].y);
+
+				}
+		
+				if(wrong_circles)	
+				{
+					for(int j=2;j<pt.size();++j)
+						if(j!=tr[0] && j!=tr[1] && j!=tr[2])
+							if( inside_circumcircle(pt[j], pt[tr[0]], pt[tr[1]], pt[tr[2]]) )
+							{
+								point ce; double r;
+								circumcircle(pt[tr[0]], pt[tr[1]], pt[tr[2]], ce ,r);
+								fprintf(file3, "%lf %lf %lf\n", ce.x, ce.y, r);
+							
+								for(int k=0;k<3;++k)
+									fprintf(file4, "%lf %lf\n", pt[tr[k]].x, pt[tr[k]].y);
+								invalid = 1;
+								wrong_circles = 0;
+								break;
+							}
+				}
 			}
 
 		}
-	}
-
-	fprintf(pf, "plot \"data_p\" using 1:2 with dots title \"Points\"");
-	if( with_circles )
-	{
-		fprintf(pf, ", \\\n     \"data_c\" with circles lw 1 lc rgb \"red\", \\\n");	
-		fprintf(pf, "     \"data_cp\" with points pt 7 lc rgb \"blue\"");	
-	}
-	fprintf(pf, "\nunset multiplot\n");	
-	fclose(pf);
 	
-	int result = system("gnuplot -persist graph.conf");
 
+	fclose(file);
+	fclose(file2);
+	fclose(file3);
+	fclose(file4);
+	
+	fprintf(pf, "plot \"data_p\" using 1:2 with dots lc rgb \"black\" title \"Points\"");
+	
+	if(invalid)
+	{
+		fprintf(pf, ", \\\n     \"data_invc\" with circles lw 1 lc rgb \"red\", \\\n");	
+		fprintf(pf, "     \"data_invp\" with points pt 7 lc rgb \"red\"");	
+	
+	}
+	if( rand_circles )
+	{
+		fprintf(pf, ", \\\n     \"data_c\" with circles lw 1 lc rgb \"green\", \\\n");	
+		fprintf(pf, "     \"data_cp\" with points pt 7 lc rgb \"green\"");	
+	}
+	fprintf(pf, "\n");
+
+	fclose(pf);
+
+	system("killall gnuplot");
+	system("gnuplot -persist graph.conf");
 }
 
 /**
@@ -565,6 +576,13 @@ void delaunay::plot_triangulation(bool with_circles) const
 int delaunay::size() const
 {
 	return  triangle.size();
+}
+/**
+* Number of points
+*/
+int delaunay::npoints() const
+{
+	return pt.size();
 }
 /**
 * average number of triangles visited on each query

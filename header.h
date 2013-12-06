@@ -3,7 +3,7 @@
 
 #include "opencv2/imgproc/imgproc.hpp"
 #include "opencv2/highgui/highgui.hpp"
-#include<cstdio>
+#include<stdio.h>
 #include<set>
 #include<cstdlib>
 #include<queue>

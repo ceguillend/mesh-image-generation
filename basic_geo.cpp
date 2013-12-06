@@ -67,6 +67,10 @@ bool point::operator >(point a) const
 {
 	return cmp(y,a.y)>0 || (cmp(y,a.y)==0 && cmp(x,a.x)>0);
 }
+bool point::operator ==(point a) const
+{
+	return cmp(x,a.x)==0 && cmp(y,a.y)==0;
+}
 /////
 
 
@@ -107,7 +111,8 @@ $@Param h Height of the image
 */
 point px_pt(pii px, int H) 
 {
-	return point(px.F, H-1-px.S);
+	return point(px.S, H-1-px.F);
+		   // col,   row
 
 }
 
@@ -119,5 +124,6 @@ $@Param h Height of the image
 */
 pii pt_px(point pt, int H)
 {
-	return pii(round(pt.x), round(H-1-pt.y));
+	return pii( round(H-1-pt.y), round(pt.x));
+		// row 			col
 }
