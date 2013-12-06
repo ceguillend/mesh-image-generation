@@ -161,8 +161,10 @@ int main( int argc, char** argv )
 		//printf("(%d, %d)\n", tmp.F, tmp.S);
 		dt.add_point( point( tmp.F, tmp.S ) );
 	}
+
 	printf("N: %d  NT: %d  NLO: %.2lf\n", n, dt.size(), dt.average_location_operations());
-	dt.plot_triangulation();	
+	dt.plot_triangulation(0);	
 	assert( dt.check() ); 
+
 	return 0;
 }

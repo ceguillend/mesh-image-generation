@@ -442,7 +442,7 @@ bool delaunay::check() const
 
 }
 
-void delaunay::plot_triangulation() const
+void delaunay::plot_triangulation(bool with_circles) const
 {
 	vector< vector<int> > adj( pt.size(), vector<int>() ); // graph of points
 
@@ -481,9 +481,38 @@ void delaunay::plot_triangulation() const
 	}
 	fclose(file);
 
+
+	if(with_circles)
+	{
+		file = fopen("data_c","w"); // circle
+		FILE* file2 = fopen("data_cp","w"); // circle points
+		// plot random circles
+		for(int i=0;i<triangle.size();++i)
+			if(tree[i].empty()) // leaaf, actual triangle
+			{
+				const vector<int>& tr = triangle[i];
+				if( tr[0] > 1 && tr[1] > 1 && tr[2] > 1 )
+				{
+					if( rand()%100 <= 4 ) // 10% of the circles
+					{
+						point ce; double r;
+						circumcircle(pt[tr[0]], pt[tr[1]], pt[tr[2]], ce ,r);
+						fprintf(file, "%.4lf %.4lf %.4lf\n", ce.x, ce.y, r);
+						for(int k=0;k<3;++k)
+							fprintf(file2, "%.4lf %.4lf\n", pt[tr[k]].x, pt[tr[k]].y);
+
+					}
+				}
+			}
+		fclose(file);
+		fclose(file2);
+	}
 	// start the ploting process
+	
 	FILE* pf = fopen("graph.conf", "w");
 	
+	fprintf(pf, "set multiplot\n");
+	fprintf(pf, "set size square\n");	
 	fprintf(pf, "set xtic auto\nset ytic auto\n");
 	fprintf(pf, "set title \"Delaunay\" \n set xlabel \"X\"\n");
 	fprintf(pf, "set ylabel \"Y\" \nset pointsize 1\n");
@@ -516,8 +545,14 @@ void delaunay::plot_triangulation() const
 
 		}
 	}
-	
-	fprintf(pf, "plot \"data_p\" using 1:2 with dots title \"Points\"\n");
+
+	fprintf(pf, "plot \"data_p\" using 1:2 with dots title \"Points\"");
+	if( with_circles )
+	{
+		fprintf(pf, ", \\\n     \"data_c\" with circles lw 1 lc rgb \"red\", \\\n");	
+		fprintf(pf, "     \"data_cp\" with points pt 7 lc rgb \"blue\"");	
+	}
+	fprintf(pf, "\nunset multiplot\n");	
 	fclose(pf);
 	
 	int result = system("gnuplot -persist graph.conf");
