@@ -66,7 +66,7 @@ class delaunay
 	bool check() const;
 	//ploting functions	
 	void plot_points() const;
-	void plot_triangulation() const;
+	void plot_triangulation(bool with_circles) const;
 	// statistics
 	int size() const;
 	double average_location_operations() const;

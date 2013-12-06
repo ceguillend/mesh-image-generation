@@ -35,22 +35,50 @@ double point::operator^(point a) const
 {
 	return x*a.y-y*a.x;
 }
-//
+point point::operator +(point a) const
+{
+	return point(x+a.x,y+a.y);
+}
 point point::operator -(point a) const
 {
 	return point(x-a.x,y-a.y);
 }
-//
+double point::operator* (point a) const
+{
+	return x*a.x+y*a.y;
+}
+point point::operator* (double a) const
+{
+	return point(x*a, y*a);
+}
+point point::operator/ (double a) const
+{
+	return point(x/a, y/a);
+}
+point point::ort() const
+{
+	return point(-y, x);
+}
 bool point::operator <(point a) const
 {
 	return cmp(y,a.y)<0 || (cmp(y,a.y)==0 && cmp(x,a.x)<0);
 }
-//
 bool point::operator >(point a) const
 {
 	return cmp(y,a.y)>0 || (cmp(y,a.y)==0 && cmp(x,a.x)>0);
 }
 /////
+
+
+void circumcircle(point a, point b, point c, point& ce , double& r)
+{
+	point p = (a+b)/2, q = (b+c)/2;
+	point v = (b-a), u = (c-b);
+	double k = ((q-p)*u)/(v.ort()*u);
+	
+	ce  = p + v.ort()*k;
+	r = ce.dist(a);
+}
 
 /** Check if the point is inside the circumcircle
 *@param d is the point to be checked
