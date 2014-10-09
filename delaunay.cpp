@@ -416,13 +416,13 @@ void delaunay::plot_points() const
 
 /**
 * Checks if the delaunay triangulation satisfies the delaunay condition
-*O(n^2) bruteforce check
+*O(n^2) brute force check
 */
 bool delaunay::check() const 
 {
 
 	for(int i=0;i<triangle.size();++i)
-		if(tree[i].empty()) // leaaf, actual triangle
+		if(tree[i].empty()) // leaf, actual triangle
 		{
 			const vector<int>& tr = triangle[i];
 			if( tr[0] > 1 && tr[1] > 1 && tr[2] > 1 )
@@ -512,7 +512,7 @@ void delaunay::plot_delaunay(bool wrong_circles, bool rand_circles) const
 			
 			if( tr[0] > 1 && tr[1] > 1 && tr[2] > 1 )
 			{ // real points
-				if(rand_circles && rand()%100 <= 4 ) // 10% of the circles
+				if(rand_circles && rand()%100 <= 4 ) // 4% of the circles
 				{
 					point ce; double r;
 					circumcircle(pt[tr[0]], pt[tr[1]], pt[tr[2]], ce ,r);

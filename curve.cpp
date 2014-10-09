@@ -3,17 +3,10 @@
 using namespace std;
 using namespace cv;
 
-/** Given the canny image of edges finds the pixel components and simple curves by 8-neighborhood of pixels
-*
-*@param img_edge Image containing a Canny image (CV_8U1)
-*@param min_curve_sz The minimum length size needed to be considered a curve(in pixels)
-*@param curves  Returns the list of curves as a set of consecutive pixel coordinates
-*@param img_group Returns the image of the pixel components (every component of the same color)
-*@param img_curve Return the image of the curves found (ever curve of the same color)
-*/
-
-void find_pixel_curves( const Mat& img_edge, int min_curve_len, vector< vector<pii> >& px_curve, Mat& img_group, Mat& img_curve  )
-{
+const int MAX_LUM = 200;
+void find_pixel_curves(const Mat& img_edge, int min_curve_len,
+                        vector< vector<pii> >& px_curve, Mat& img_group,
+                        Mat& img_curve  ) {
 	assert( img_edge.type() == CV_8UC1 );
 	srand(SEED);
 	// 8-neighborhood
@@ -27,7 +20,7 @@ void find_pixel_curves( const Mat& img_edge, int min_curve_len, vector< vector<p
 	// image of groups
 	img_group = Mat::zeros(n,m,CV_8UC3);
 
-	// defines the curve in which it appears
+	// defines the curve to which the given pixels belongs
 	vector< vector<int> > id_cv(n, vector<int>(m, -1)); 
 	int l_curve = -1 ;
 
@@ -37,13 +30,14 @@ void find_pixel_curves( const Mat& img_edge, int min_curve_len, vector< vector<p
 		for(int j=0;j<m;++j)
 			if( img_edge.at<uchar>(i, j) == 255 && id_cv[i][j]==-1 )
 			{
-				Vec3b group_color( rand()%256, rand()%256, rand()%256 );
+				Vec3b group_color = rand_color();
 				
 				queue< pii > q;
 				id_cv[i][j] = ++l_curve;
 				temp_curve.push_back( vector<pii>() );
 				q.push( pii(i,j) );		
-				
+
+        // bfs
 				while(!q.empty())
 				{
 					int r = q.front().F, c = q.front().S;
@@ -83,6 +77,7 @@ void find_pixel_curves( const Mat& img_edge, int min_curve_len, vector< vector<p
 	px_curve.clear();
 	
 	//image curve plottinh	
+  // white background
 	img_curve = Mat::zeros(n,m,CV_8UC3);
 	srand(SEED);	
 	for(int i=0;i<temp_curve.size();++i)
@@ -91,24 +86,20 @@ void find_pixel_curves( const Mat& img_edge, int min_curve_len, vector< vector<p
 		{
 			px_curve.push_back( temp_curve[i] );
 
-			Vec3b curve_color( rand()%256, rand()%256, rand()%256 );
+			Vec3b curve_color = rand_color();
 			for(int j=0;j<temp_curve[i].size();++j)
 			{
-				img_curve.at<Vec3b>(temp_curve[i][j].F, temp_curve[i][j].S) = curve_color;
+				img_curve.at<Vec3b>(temp_curve[i][j].F, temp_curve[i][j].S) =
+            curve_color;
 			}
 		}
 	}
 }
 
-/** Simplify the curve of pixels into a set of line segments (douglas peucker algorithm)
-*
-* @param px_curve The set of curves to be simplified
-* @param sg_curve Return the set of segment points (adjacent elements are neighboors)
-* @param max_d Maximum distance allowed from a point to its segment
-* @param max_len Maximum length allowed for a segment 
-*/
-void simplify_curve(vector< vector<pii> >& px_curve, int H, int W, double max_d, double max_len, vector< vector<point> >& sg_curve, Mat& img_curve_pt)
-{
+
+void simplify_curve(vector< vector<pii> >& px_curve, int H, int W, double max_d,
+                    double max_len, vector< vector<point> >& sg_curve,
+                    Mat& img_curve_pt) {
 	sg_curve.assign( px_curve.size(),  vector<point>() );
 
 	for(int i=0;i<px_curve.size();++i)
@@ -169,7 +160,8 @@ void simplify_curve(vector< vector<pii> >& px_curve, int H, int W, double max_d,
 	srand(SEED);	
 	for(int i=0;i<sg_curve.size();++i)
 	{
-		Scalar curve_color( rand()%256, rand()%256, rand()%256 );
+    Vec3b rgb_color = rand_color();
+		Scalar curve_color(rgb_color[0], rgb_color[1], rgb_color[2]);
 		pii px, ppx;
 		for(int j=0;j<sg_curve[i].size();++j)
 		{
@@ -177,7 +169,8 @@ void simplify_curve(vector< vector<pii> >& px_curve, int H, int W, double max_d,
 			circle(img_curve_pt, cvPoint(px.S, px.F), 3, curve_color);
 			if(j)
 			{
-				line( img_curve_pt, cvPoint(ppx.S,ppx.F), cvPoint(px.S,px.F), curve_color);
+				line(img_curve_pt, cvPoint(ppx.S,ppx.F), cvPoint(px.S,px.F),
+              curve_color);
 			}
 			ppx = px;
 		}
