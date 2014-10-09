@@ -1,8 +1,9 @@
-#include"header.h"
-#include"curve.h"
-#include"thinning.h"
-#include"basic_geo.h"
-#include"delaunay.h"
+#include "header.h"
+#include "curve.h"
+#include "thinning.h"
+#include "basic_geo.h"
+#include "delaunay.h"
+#include "time.h"
 
 using namespace std;
 using namespace cv;
@@ -23,9 +24,9 @@ Mat img_curve_pt; // simplified curve
 
 // canny parameters
 int lowThreshold = 40; // variable, 40 good plot
-int const max_lowThreshold = 100;
-int const ratio = 2;
-int const kernel_size = 3;
+const int max_lowThreshold = 100;
+const int ratio = 2;
+const int kernel_size = 3;
 
 // curve_parameters
 int max_d = 5; // good lines
@@ -35,6 +36,11 @@ int min_cv_len = 0; // show all
 // Algorithm
 int show_phase = 7;
 const int n_phases = 7;
+
+// Involves a O(n^2) check.
+const int kPlotWrongCircumcircle = false;
+// Samples 4 percent of the triangles. 
+const int kPlotRandCircumcircle = true;
 
 void write_process()
 {
@@ -78,9 +84,8 @@ void show(int, void*)
  */
 void method(int, void*)
 {
-	/* Find edge transformation */	
-
-	//Mat img_canny, img_edge;
+  clock_t begin_time = clock();
+	// Edge extraction process. 
 	// Reduce noise with a kernel 3x3
 	blur( src_gray, gray_blur, Size(3,3) );
 	// Canny detector, result img_edge
@@ -109,13 +114,15 @@ void method(int, void*)
 	// find pixel curves	
 	find_pixel_curves(img_edge, min_cv_len, px_curve, img_group, img_curve_px);
 	// fing segment curves
-	simplify_curve(px_curve, img_edge.rows, img_edge.cols, max_d, max_len, sg_curve, img_curve_pt);
+	simplify_curve(px_curve, img_edge.rows, img_edge.cols, max_d, max_len,
+                 sg_curve, img_curve_pt);
 	//results
 
 	// Just builds the delaunay triangulation with the segment points
 	delaunay dt(src.cols, src.rows);
 
-	set<point> pt ; // quarantee unique poinnts
+  // Guarantees unique points
+	set<point> pt ; 
 	pt.insert( point( src.cols, src.rows ) );
 
 	for(int i=0;i<sg_curve.size();++i)
@@ -127,17 +134,44 @@ void method(int, void*)
 				pt.insert( sg_curve[i][j] );
 			}
 		}
-		
+
+  clock_t end_time = clock();
+  int time_elapsed = (end_time-begin_time) / CLOCKS_PER_SEC;
+  printf("====================================================\n");
+  printf("Method :\n");
+  printf("  -Time elapsed: %3d h %2d m %2d s\n\n", time_elapsed/60/60,
+          (time_elapsed/60)%60, time_elapsed%60);
+  printf("Delaunay:\n");
+	printf("  - Points inserted     : %d\n", dt.npoints());
+  printf("  - Triangle tree nodes : %d\n", dt.size());
+  printf("  - Search point cost   : %.2lf\n", dt.average_location_operations());
+
+  begin_time = clock();
+
 	//verifies dt condition
-//	assert( dt.check() );
+	//assert(dt.check());
+
+  end_time = clock();
+  time_elapsed = (end_time-begin_time) / CLOCKS_PER_SEC;
+  printf("  - Check time : %3d h %2d m %2d s\n\n", time_elapsed/60/60,
+          (time_elapsed/60)%60, time_elapsed%60);
+
+  printf("Plot:\n");
+
+  begin_time = clock();
+
 	// plot delaunay
-	dt.plot_delaunay(1, 0);		
-	// delaunay info
-	printf("N: %d  NT: %d  NLO: %.2lf\n", dt.npoints(), dt.size(), dt.average_location_operations());
+	dt.plot_delaunay(kPlotWrongCircumcircle, kPlotRandCircumcircle);		
 	// show the image
 	show(0,0);
+
+  end_time = clock();
+  time_elapsed = (end_time-begin_time) / CLOCKS_PER_SEC;
+  printf("  - Plot time : %3d h %2d m %2d s\n\n", time_elapsed/60/60,
+          (time_elapsed/60)%60, time_elapsed%60);
+
 	// write process
-//	write_process();
+  // write_process();
 }
 
 
