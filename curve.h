@@ -1,44 +1,52 @@
-//functions for transforming a binary edge image into a set of segment lines
+/** @file
+ * Functions for transforming a binary edge image into a set of line segments.
+ */
 #ifndef CURVES_H
 #define CURVES_H
 
-#include "header.h"
 #include "basic_geo.h"
 #include "color_utils.h"
+#include "opencv2/imgproc/imgproc.hpp"
+#include <vector>
+#include <list>
 
-// Defines the maximum value for the colors to display the curves.
-extern const int MAX_LUM;
 
-/**Given the canny image of edges finds the pixel components and simple curves
-* by 8-neighborhood of pixels
-*
-*@param img_edge Image containing a Canny image (CV_8U1).
-*@param min_curve_sz The minimum length size needed to be considered a curve(in
-                      pixels).
-*@param curves  Returns the list of curves as a set of consecutive pixel
-                coordinates.
-*@param img_group Returns the image of the pixel components (every component of
-                  the same color).
-*@param img_curve Return the image of the curves found (ever curve of the same
-                  color).
-*/
-void find_pixel_curves( const cv::Mat& img_edge, int min_curve_len,
-                        std::vector< std::vector<std::pii> >& px_curve, 
-			                  cv::Mat& img_group, cv::Mat& img_curve);
-
-/** Simplify the curve of pixels into a set of line segments (douglas peucker
-*   algorithm)
-*
-* @param px_curve The set of curves to be simplified
-* @param sg_curve Return the set of segment points (adjacent elements are
-*                 neighboors)
-* @param max_d Maximum distance allowed from a point to its segment
-* @param max_len Maximum length allowed for a segment 
-*/
-void simplify_curve(std::vector< std::vector<std::pii> >& px_curve,
-                    int H, int W, double max_d, double max_sz, 
-		                std::vector< std::vector<point> >& sg_curve,
-                    cv::Mat& img_curve_pt);
-
+namespace mesh_generation {
+/**
+ * Given the thinned canny image of pixel-edges finds the pixel components and
+ * simple curves by 8-neighborhood of pixels. It is a precondition that the
+ * Canny edge has to have edged of thickness equal to 1.
+ *
+ * @param canny_edge Image containing a Thinned Canny image (CV_8U1).
+ * @param min_curve_length The minimum length considered for a curve, measured
+ *          in pixels.
+ * @param point_curves Returns the list of curves as a set of consecutive 
+ *          cartesian point coordinates.
+ * @param curves_plot Returns the image of the curves found, by drawing them
+ *          with different colors.
+ */
+void FindPixelCurves(const cv::Mat& canny_edge, int min_component_size,
+                      int curve_length_threshold,
+                      std::list< std::vector<Point> >* point_curves,
+                      cv::Mat* curves_plot);
+/**
+ * Simplifies the curve of pixels into a set of line segments (Douglas Peucker
+ * algorithm).
+ *
+ * @param point_curves The set of curves to be simplified.
+ * @param image_length
+ * @param image_width
+ * @param max_point_distance Maximum distance allowed from a Point to its
+ *          segment in the curve, measured in pixels.
+ * @param max_segment_length Maximum length allowed for a segment, measured in
+ *          pixels. 
+ * @param simplified_curves Returns the simplified curves.
+ * @param simplified_curves_plot Returns the curves plotted on the image domain.
+ */
+void SimplifyPointCurves(const std::list<std::vector<Point> >& point_curves,
+                        int image_height, int image_width,
+                        int max_point_distance, int max_segment_length,
+                        std::list< std::vector<Point> >* simplified_curves,
+                        cv::Mat* simplified_curves_plot);
+}  // namespace mesh_generation
 #endif
-

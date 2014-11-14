@@ -1,42 +1,119 @@
+/** @file
+ * Contains geometrical primitive operations.
+ */
 #ifndef BASIC_GEO_H
 #define BASIC_GEO_H
-#include"header.h"
-#define eps 1e-7
+#include <vector>
 
-//double utilities
-double cmp(double a, double b);
-double sqr(double a);
+using std::vector;
 
-// euclidean 2D point
-class point
-{
-	public:
-	double x,y;
-	//contructors
-	point();
-	point(double x, double y);
-	//operators
-	double dist(point a) const;
-	double operator^(point a) const;
-	point operator +(point a) const;
-	point operator -(point a) const;
-	double operator*(point a) const;
-	point operator*(double a) const;
-	point operator/(double a) const;
-	bool operator >(point a) const;
-	bool operator <(point a) const;
-	bool operator ==(point a) const;
-	point ort() const;
+namespace mesh_generation {
+/**
+ * Double precision error.
+ */
+extern const double kError;
+
+/**
+* Double comparison.
+*/
+int Cmp(double a, double b);
+
+/**
+* Returns the square of the value.
+*/
+double Sqr(double a);
+
+struct Pixel;
+/**
+ * Euclidean 2D Point.
+ */
+struct Point {
+	Point();
+	Point(double x, double y);
+	Point operator +(Point a) const;
+	Point operator -(Point a) const;
+	Point operator *(double a) const;
+	Point operator /(double a) const;
+	double operator *(Point a) const;
+
+  /**
+   * Returns 2D cross product.
+   */
+	double operator ^ (Point a) const;
+	bool operator > (Point a) const;
+	bool operator < (Point a) const;
+	bool operator == (Point a) const;
+  bool operator != (Point a) const;
+
+  /**
+   * Returns a ortogonal vector.
+   */
+	Point Ort() const;
+
+  /**
+   * Returns the distance to the Point a.
+   */
+	double Dist(Point a) const;
+
+  /**
+   * Transforms to pixel coordinates.
+   */
+  Pixel ToPixel(int image_height) const;
+
+  /**
+   * Coordinates.
+   */
+	double x;
+  double y;
 };
 
-// finds the circumcircle of thre tree points a,b and c
-void circumcircle(point a, point b, point c, point& ce , double& r);
+/**
+ * Stores the coordinates of a pixel, the coordinates of pixels are bounded to
+ * the image space [0, image_height-1] x [0, image_width-1].
+ */
+struct Pixel {
+  Pixel();
+  Pixel(int row, int col);
 
-// checks if a point is inside a circumcircle
-bool inside_circumcircle(const point& d, const point& a, const point& b, const point& c);
+  /**
+   * Transforms into cartesian coordinates.
+   */
+  Point ToPoint(int image_height) const;
 
-//pixel coordinates transformation
-point px_pt(std::pii px, int H);
-std::pii pt_px(point pt, int H);
+  /**
+   * Allows std::set insertion.
+   */
+  bool operator < (const Pixel& a) const;
+  bool operator == (const Pixel& a) const;
+  /**
+   * Image coordinates.
+   */
+  int row;
+  int col;
+};
 
+/**
+ * Finds the circumcircle of thre tree Points a, b and c.
+ *
+ * @param center Returns the center of the circumcircle.
+ * @param r Returns the radius of the circumcircle.
+ */
+void Circumcircle(Point a, Point b, Point c, Point* center , double* r);
+
+/**
+ * Checks if a point is strictly inside a circumcircle.
+ *
+ * @param d The point to be checked.
+ * @param a,b,c The points of the triangle in clockwise order.
+ */
+bool IsInsideCircumcircle(const Point& d, const Point& a, const Point& b,
+                          const Point& c);
+
+/**
+ * Calculates the centroid of a set of Points.
+ */
+Point Centroid(const vector<Point>& Points);
+Pixel Centroid(const vector<Pixel>& pixels);
+
+}  // namespace mesh_generation
 #endif
