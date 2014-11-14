@@ -1,4 +1,5 @@
 #include "color_utils.h"
+#include <random>
 
 using namespace cv;
 
@@ -23,5 +24,8 @@ Vec3b hsv_to_rgb(Vec3d hsv) {
 }
 
 cv::Vec3b rand_color() {
-  return hsv_to_rgb(Vec3d((double)rand()/(RAND_MAX-1), 0.5, 0.95));
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<> dis(0, 1);
+  return hsv_to_rgb(Vec3d(dis(gen), 0.5, 0.95));
 }
