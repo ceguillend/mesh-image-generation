@@ -20,7 +20,7 @@ namespace mesh_generation {
  * @param canny_edge Image containing a Thinned Canny image (CV_8U1).
  * @param min_curve_length The minimum length considered for a curve, measured
  *          in pixels.
- * @param point_curves Returns the list of curves as a set of consecutive 
+ * @param point_curves Returns the list of curves as a set of consecutive
  *          cartesian point coordinates.
  * @param curves_plot Returns the image of the curves found, by drawing them
  *          with different colors.
@@ -39,7 +39,7 @@ void FindPixelCurves(const cv::Mat& canny_edge, int min_component_size,
  * @param max_point_distance Maximum distance allowed from a Point to its
  *          segment in the curve, measured in pixels.
  * @param max_segment_length Maximum length allowed for a segment, measured in
- *          pixels. 
+ *          pixels.
  * @param simplified_curves Returns the simplified curves.
  * @param simplified_curves_plot Returns the curves plotted on the image domain.
  */
@@ -48,5 +48,7 @@ void SimplifyPointCurves(const std::list<std::vector<Point> >& point_curves,
                         int max_point_distance, int max_segment_length,
                         std::list< std::vector<Point> >* simplified_curves,
                         cv::Mat* simplified_curves_plot);
+
+void
 }  // namespace mesh_generation
 #endif

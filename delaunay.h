@@ -57,7 +57,8 @@ public :
    * lexicographically bigger point among all the ones that will be latter
    * inserted.
    */
-  DelaunayMesh(Point lexicographically_bigger);
+  DelaunayMesh(Point lexicographically_bigger,
+                list< vector<Point> > simplified_curves);
 
   /**
    * Inserts the given point to the delaunay triangulation.
@@ -233,9 +234,19 @@ private:
   void SavePointsToFile(const std::string& file_name, double* min_x,
                         double* max_x, double* min_y, double* max_y) const;
   /**
+   * Set of points associated with their point ids.
+   */
+  std::map<Point, int> _point_to_id;
+
+  /**
    * Set of inserted points.
    */
   std::vector<Point> _points;
+
+  /**
+   * Set of border edges, pair(point_id, point_id).
+   */
+  std::unordered_set< pair<int, int> > border_edges;
 
   /**
    * Each position contains .
@@ -246,8 +257,6 @@ private:
    * Number of triangles visited through all the queries.
    */
   int _total_query_operations;
-
-
 };
 }  // namespace mesh_generation
 #endif

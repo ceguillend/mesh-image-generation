@@ -93,9 +93,9 @@ Mat image_pixel_curve;
 Mat image_point_curve;
 
 /**
- * Points used to generate the delaunay triangulation.
+ * Curves used to generate the delaunay triangulation.
  */
-vector<Point> triangulation_points;
+list< vector<Point> > simplified_curves;
 
 
 void write_process()
@@ -179,23 +179,11 @@ void CurvesGeneration(int, void*) {
 	FindPixelCurves(image_thinned_edge, component_size_threshold,
                     curve_length_threshold, &point_curves, &image_pixel_curve);
 
-	list< vector<Point> > simplified_curves;
+  // Sets the global variable of simplified_curves, to be used in the mesh
+  // construction.
 	SimplifyPointCurves(point_curves, num_rows, num_cols, max_point_distance,
                         max_segment_length, &simplified_curves,
                         &image_point_curve);
-
-	// Builds the delaunay triangulation with the curves segments.
-
-  // Guarantees unique points.
-  triangulation_points.clear();
-  for (const vector<Point>& curve: simplified_curves) {
-    for (const Point& point: curve) {
-      if (point == Point(num_cols, num_rows)) { // convex hull point
-        continue;
-      }
-      triangulation_points.push_back(point);
-    }
-  }
 
 	DisplayImageResult(0, nullptr);
 
@@ -214,14 +202,8 @@ void PrintDenaulayStats (const DelaunayMesh& mesh) {
 
 void MeshGeneration(int, void*) {
   clock_t begin_time = clock();
-  sort(triangulation_points.begin(), triangulation_points.end());
-  triangulation_points
-      .resize(unique(triangulation_points.begin(), triangulation_points.end())
-                - triangulation_points.begin());
-  DelaunayMesh mesh(Point(image_source.cols, image_source.rows));
-  for (Point point: triangulation_points) {
-    mesh.InsertPoint(point);
-  }
+  DelaunayMesh mesh(Point(image_source.cols, image_source.rows),
+                    simplified_curves);
 	// Verifies mesh correctness O(n^2).
 	assert(mesh.IsValidDelaunay());
   mesh.PlotTriangulation(kPlotWrongCircumcircle, kPlotRandCircumcircle);
