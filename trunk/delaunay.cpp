@@ -30,32 +30,32 @@ DelaunayTriangle::DelaunayTriangle(std::vector<int> point_ids,
   assert(triangle_neighbor_ids.size() == 3);
 }
 
-DelaunayMesh::DelaunayMesh(Point lexicographically_bigger) {
+DelaunayMesh::DelaunayMesh(Point lexicographically_bigger,
+                           list< vector<Point> > simplified_curves) {
   _total_query_operations = 0;
   // Creates the "outside-triangle" which is big enough to contain any triangle
-  // inserted.
-  int p2_id = StorePoint(Point(kInfinite, kInfinite));
-  int p1_id = StorePoint(Point(kInfinite, kInfinite));
-  int p0_id = StorePoint(lexicographically_bigger);
+  // inserted, the coordinates of the imaginary points are not actually used.
+  int p2_id = PointId(Point(kInfinite, kInfinite));
+  int p1_id = PointId(Point(-kInfinite, -kInfinite));
+  int p0_id = PointId(lexicographically_bigger);
 
   int outer_triangle_id = AllocateNewTriangle();
   GetTriangleRef(outer_triangle_id).point_ids = {p2_id, p0_id, p1_id};
 }
 
-int DelaunayMesh::StorePoint(const Point& point) {
+int DelaunayMesh::PointId(const Point& point) {
+  if (_point_to_id.count(point)) {
+    return _point_to_id[point];
+  }
+
   int point_id = _points.size();
   _points.push_back(point);
-  return point_id;
+  return _point_to_id[point] = point_id;
 }
 
 int DelaunayMesh::AllocateNewTriangle() {
   _triangles.push_back(DelaunayTriangle());
   return _triangles.size() - 1;
-}
-
-int DelaunayMesh::AllocateNewPoint() {
-  _points.push_back(Point());
-  return _points.size() - 1;
 }
 
 DelaunayTriangle& DelaunayMesh::GetTriangleRef(int triangle_id) {
@@ -378,7 +378,7 @@ void DelaunayMesh::InsertInnerPoint(int triangle_id, int point_id) {
 void DelaunayMesh::InsertPoint(Point point) {
   // Triangle enclosing the point to be inserted.
   int triangle_id = FindEnclosingTriangle(point);
-  int point_id = StorePoint(point);
+  int point_id = PointId(point);
   // Checks whether the point belongs to the inner region or an edge.
   int edge_id;
   if (BelongsTriangleBorder(point ,triangle_id, &edge_id)) {
