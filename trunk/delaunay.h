@@ -6,8 +6,20 @@
 
 #include "basic_geo.h"
 #include <string>
+#include <list>
+#include <vector>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <boost/functional/hash.hpp>
 
 namespace mesh_generation {
+
+typedef std::unordered_set< std::pair<int, int>,
+        boost::hash< std::pair<int, int> > > PairSet;
+
+typedef std::unordered_map< std::pair<int, int>, int,
+        boost::hash< std::pair<int, int> > > PairMap;
 
 /**
  * Defines the data type used to store the information of a single triangle in
@@ -58,15 +70,8 @@ public :
    * inserted.
    */
   DelaunayMesh(Point lexicographically_bigger,
-                list< vector<Point> > simplified_curves);
-
-  /**
-   * Inserts the given point to the delaunay triangulation.
-   *
-   * @param point The point to be inserted, note that this point must be unique
-   *          among the set of already inserted points.
-   */
-  void InsertPoint(Point pt);
+               const std::list< vector<Point> >& simplified_curves,
+               int num_split_operations);
 
   /**
    * Checks if the current triangulation satisfies the delaunay properties.
@@ -103,7 +108,7 @@ public :
   int TriangleTreeSize() const;
 
   /**
-   * @return The number of points inserted in the triangulation.
+   * @return The number of unique points inserted in the triangulation.
    */
   int PointSetSize() const;
 
@@ -113,6 +118,13 @@ public :
   double AverageInsertionCost() const;
 
 private:
+  /**
+   * Inserts the given point to the delaunay triangulation.
+   *
+   * @param point_id The point id of the point to be inserted.
+   */
+  void InsertPoint(int point_id);
+
   /**
    * Checks whether the given point is inside or in the edge of the triangle
    * defined by _triangles[triangle_id].
@@ -146,7 +158,7 @@ private:
    * Stores the given point.
    * @return The point id.
    */
-  int StorePoint(const Point& point);
+  int PointId(const Point& point);
 
   /**
    * @return the triangle id of the new allocated triangle.
@@ -167,6 +179,7 @@ private:
    * @return the value of the triangle stored with the given id.
    */
   const DelaunayTriangle& GetTriangleVal(int triangle_id) const;
+
   /**
    * @return the point stored with the given id.
    */
@@ -217,6 +230,7 @@ private:
    * @param triangle_id The id of the triangle in which the point lies.
    * @param point_id The id of the point to be inserted.
    */
+
   void InsertInnerPoint(int triangle_id, int point_id);
   /**
    * Finds the index in which the given neighbor_id occurs in the list of
@@ -244,10 +258,20 @@ private:
   std::vector<Point> _points;
 
   /**
-   * Set of border edges, pair(point_id, point_id).
+   * Set of border edges, pair(point_id, point_id), where the value
+   * indicates the number of times the segment can be split.
    */
-  std::unordered_set< pair<int, int> > border_edges;
+  PairMap _constrains;
 
+  /**
+   * Holds the set of segments with unsatisfied constrains.
+   */
+  PairSet  _unsatisfied_constrains;
+
+  /**
+   * Holds whether the point ids have been inserted or not.
+   */
+  std::unordered_set<int> _inserted_points;
   /**
    * Each position contains .
    */
@@ -257,6 +281,7 @@ private:
    * Number of triangles visited through all the queries.
    */
   int _total_query_operations;
+
 };
 }  // namespace mesh_generation
 #endif

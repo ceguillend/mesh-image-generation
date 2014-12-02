@@ -8,6 +8,9 @@ using std::swap;
 using std::max;
 using std::min;
 using std::string;
+using std::pair;
+using std::make_pair;
+using std::list;
 
 const int kTriangleSides = 3;
 const double kInfinite = 1./0.;
@@ -15,6 +18,12 @@ const int kP2Id = 0;
 const int kP1Id = 1;
 const int kNullId = -1;
 const int kTriangleRoot = 0;
+
+namespace {
+pair<int, int> minMaxPair(int a, int b) {
+  return make_pair(min(a, b), max(a,b));
+}
+}  // namespace
 
 namespace mesh_generation {
 
@@ -31,7 +40,9 @@ DelaunayTriangle::DelaunayTriangle(std::vector<int> point_ids,
 }
 
 DelaunayMesh::DelaunayMesh(Point lexicographically_bigger,
-                           list< vector<Point> > simplified_curves) {
+                           const list< vector<Point> >& simplified_curves,
+                           int num_split_operations) {
+  assert(num_split_operations >= 0);
   _total_query_operations = 0;
   // Creates the "outside-triangle" which is big enough to contain any triangle
   // inserted, the coordinates of the imaginary points are not actually used.
@@ -41,6 +52,48 @@ DelaunayMesh::DelaunayMesh(Point lexicographically_bigger,
 
   int outer_triangle_id = AllocateNewTriangle();
   GetTriangleRef(outer_triangle_id).point_ids = {p2_id, p0_id, p1_id};
+
+  // Stores the points and constrains.
+  for (const vector<Point>& curve: simplified_curves) {
+    assert(curve.size() > 1);
+    for (int i = 1; i < curve.size(); ++i) {
+      assert(curve[i] != curve[i - 1]);
+      int point1 = PointId(curve[i]);
+      int point2 = PointId(curve[i - 1]);
+      assert(point1 != point2);
+      _constrains[minMaxPair(point1, point2)] = num_split_operations;
+      _unsatisfied_constrains.insert(minMaxPair(point1, point2));
+    }
+  }
+  vector<int> point_ids;
+  // Shuffles the points.
+  for (int point_id = 3; point_id < _points.size(); ++point_id) {
+    point_ids.push_back(point_id);
+  }
+  for (int i = 0; i < point_ids.size(); ++i) {
+    swap(point_ids[i], point_ids[rand()%(i+1)]);
+  }
+  // Inserts the points in the triangulation.
+  for (int i = 0; i < point_ids.size(); ++i) {
+    InsertPoint(point_ids[i]);
+  }
+  printf("\nInitial unsatisfied constrains: %d\n",
+          (int)_unsatisfied_constrains.size());
+  int num_inserted_points = 0;
+  // Tries to solve the unsatisfied constrains.
+  while(!_unsatisfied_constrains.empty()) {
+    auto it = _unsatisfied_constrains.begin();
+    assert(!IsInfinitePoint(it->first) && !IsInfinitePoint(it->second));
+    int new_point = PointId((GetPoint(it->first) + GetPoint(it->second)) / 2);
+    _constrains[minMaxPair(new_point, it->first)] = _constrains[*it] - 1;
+    _constrains[minMaxPair(new_point, it->second)] = _constrains[*it] - 1;
+    _constrains[*it] = 0;
+    _unsatisfied_constrains.erase(it);
+    //  Inserts the point to the delaunay triangulation.
+    InsertPoint(new_point);
+    ++num_inserted_points;
+  }
+  printf("Number of additional points inserted: %d\n", num_inserted_points);
 }
 
 int DelaunayMesh::PointId(const Point& point) {
@@ -51,6 +104,10 @@ int DelaunayMesh::PointId(const Point& point) {
   int point_id = _points.size();
   _points.push_back(point);
   return _point_to_id[point] = point_id;
+}
+
+Point DelaunayMesh::GetPoint(int point_id) const {
+  return _points[point_id];
 }
 
 int DelaunayMesh::AllocateNewTriangle() {
@@ -64,10 +121,6 @@ DelaunayTriangle& DelaunayMesh::GetTriangleRef(int triangle_id) {
 
 const DelaunayTriangle& DelaunayMesh::GetTriangleVal(int triangle_id) const {
   return _triangles[triangle_id];
-}
-
-Point DelaunayMesh::GetPoint(int point_id) const {
-  return _points[point_id];
 }
 
 bool DelaunayMesh::IsInfinitePoint(int point_id) const {
@@ -112,7 +165,7 @@ bool DelaunayMesh::IsInsideTriangle(int triangle_id, const Point& point) const {
 
 
 bool DelaunayMesh::BelongsTriangleBorder(const Point& point, int triangle_id,
-    int* edge_start_pos) const {
+                                         int* edge_start_pos) const {
   for (int pos = 0; pos < kTriangleSides; ++pos) {
     int beg_point_id = GetTriangleVal(triangle_id).point_ids[pos];
     int end_point_id = GetTriangleVal(triangle_id).point_ids[(pos + 1)% 3];
@@ -195,7 +248,7 @@ void DelaunayMesh::LegalizeSide(int triangle_id, int side_index) {
               .point_ids[(side_index + 2) % kTriangleSides];
   int L = GetTriangleVal(neighbor_id)
               .point_ids[(neighbor_side_index + 2) % kTriangleSides];
-  // K is the checker, always > 1.
+  // K is check point (initially the newly inserted point), never infinite.
   assert(!IsInfinitePoint(K));
   bool ilegal_edge = false;
   if (!IsInfinitePoint(I) &&
@@ -263,6 +316,14 @@ void DelaunayMesh::LegalizeSide(int triangle_id, int side_index) {
     for (int split_triangle: split_triangles) {
       GetTriangleRef(split_triangle).triangle_child_ids = triangle_children;
     }
+    // Updates the constrains information.
+    _unsatisfied_constrains.erase(minMaxPair(K, L));
+    const auto it = _constrains.find(minMaxPair(I, J));
+    if (it != _constrains.end() && it->second > 0) {
+      if (!IsInfinitePoint(I) && !IsInfinitePoint(J)) {
+        _unsatisfied_constrains.insert(minMaxPair(I, J));
+      }
+    }
     // Expands legalization.
     LegalizeSide(triangle_children[0], 1);
     LegalizeSide(triangle_children[1], 0);
@@ -293,20 +354,21 @@ void DelaunayMesh::InsertBorderPoint(int triangle_id, int point_id,
   // Updates the neighborhood and sets the new triangle's points.
   for (int i = 0; i < split_triangles.size(); ++i) {
     const auto& current_triangle = GetTriangleVal(split_triangles[i]);
+    const int current_side = side_indices[i];
     vector<int>& current_children = triangle_children[i];
     vector<int>& oposite_children = triangle_children[i ^ 1];
 
     // First child.
     GetTriangleRef(current_children[0]).point_ids = {
-      current_triangle.point_ids[side_indices[i]],
+      current_triangle.point_ids[current_side],
       point_id,
-      current_triangle.point_ids[(side_indices[i] + 2) % 3]
+      current_triangle.point_ids[(current_side + 2) % 3]
     };
 
     GetTriangleRef(current_children[0]).triangle_neighbor_ids = {
       oposite_children[1],
       current_children[1],
-      current_triangle.triangle_neighbor_ids[(side_indices[i] + 2) % 3]
+      current_triangle.triangle_neighbor_ids[(current_side + 2) % 3]
     };
 
     UpdateNeighbor(GetTriangleVal(current_children[0]).triangle_neighbor_ids[2],
@@ -315,18 +377,44 @@ void DelaunayMesh::InsertBorderPoint(int triangle_id, int point_id,
     // Second child.
     GetTriangleRef(current_children[1]).point_ids = {
       point_id,
-      current_triangle.point_ids[(side_indices[i] + 1) % 3],
-      current_triangle.point_ids[(side_indices[i] + 2) % 3]
+      current_triangle.point_ids[(current_side + 1) % 3],
+      current_triangle.point_ids[(current_side + 2) % 3]
     };
 
     GetTriangleRef(current_children[1]).triangle_neighbor_ids = {
       oposite_children[0],
-      current_triangle.triangle_neighbor_ids[(side_indices[i] + 1) % 3],
+      current_triangle.triangle_neighbor_ids[(current_side + 1) % 3],
       current_children[0]
     };
 
     UpdateNeighbor(GetTriangleVal(current_children[1]).triangle_neighbor_ids[1],
                    split_triangles[i], current_children[1]);
+
+    // Updates constrains.
+    _unsatisfied_constrains
+        .erase(minMaxPair(point_id,
+                          current_triangle.point_ids[current_side]));
+    _unsatisfied_constrains
+        .erase(minMaxPair(point_id,
+                          current_triangle.point_ids[(current_side + 2) % 3]));
+  }
+  vector<int> edge_points = {
+    GetTriangleVal(triangle_id).point_ids[side_index],
+    GetTriangleVal(triangle_id).point_ids[(side_index + 1) % 3]
+  };
+
+  // Check removed edge.
+  const pair<int, int> rm_edge = minMaxPair(edge_points[0], edge_points[1]);
+  const auto it = _constrains.find(rm_edge);
+  if (it != _constrains.end()) {
+    if (it->second > 0) {
+      // replaces the constrain.
+      for (int i = 0; i < edge_points.size(); ++i) {
+        const pair<int, int> new_edge = minMaxPair(point_id, edge_points[i]);
+        _constrains[new_edge] = max(_constrains[new_edge], it->second);
+      }
+    }
+    it->second = 0;
   }
 
   // Adds children.
@@ -369,19 +457,28 @@ void DelaunayMesh::InsertInnerPoint(int triangle_id, int point_id) {
   }
   // Sets the triangle's children
   GetTriangleRef(triangle_id).triangle_child_ids = triangle_children;
+
+  // Updates constrains.
+  for (int i = 0; i < kTriangleSides; ++i) {
+    _unsatisfied_constrains
+        .erase(minMaxPair(point_id, GetTriangleVal(triangle_id).point_ids[i]));
+  }
   // Legalize edges.
   for (int triangle_child: triangle_children) {
     LegalizeSide(triangle_child, 1);
   }
 }
 
-void DelaunayMesh::InsertPoint(Point point) {
+void DelaunayMesh::InsertPoint(int point_id) {
+  if (_inserted_points.count(point_id)) {
+    return;
+  }
+  _inserted_points.insert(point_id);
   // Triangle enclosing the point to be inserted.
-  int triangle_id = FindEnclosingTriangle(point);
-  int point_id = PointId(point);
+  int triangle_id = FindEnclosingTriangle(GetPoint(point_id));
   // Checks whether the point belongs to the inner region or an edge.
   int edge_id;
-  if (BelongsTriangleBorder(point ,triangle_id, &edge_id)) {
+  if (BelongsTriangleBorder(GetPoint(point_id), triangle_id, &edge_id)) {
     InsertBorderPoint(triangle_id, point_id, edge_id);
   } else {
     InsertInnerPoint(triangle_id, point_id);
@@ -507,6 +604,11 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
             !IsInfinitePoint(end_point_id)) {
           const Point& beg_point = GetPoint(beg_point_id);
           const Point& end_point = GetPoint(end_point_id);
+          if (beg_point == end_point) {
+            printf("%.6f %.6f\n%.6f %.6f\n\n", beg_point.x, beg_point.y,
+                                               end_point.x, end_point.y);
+            printf("%d %d\n", beg_point_id, end_point_id);
+          }
           assert (beg_point != end_point);
           // Makes sure that the edge is printed only once.
           if (beg_point < end_point) {

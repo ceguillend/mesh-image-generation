@@ -49,6 +49,5 @@ void SimplifyPointCurves(const std::list<std::vector<Point> >& point_curves,
                         std::list< std::vector<Point> >* simplified_curves,
                         cv::Mat* simplified_curves_plot);
 
-void
 }  // namespace mesh_generation
 #endif
