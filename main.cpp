@@ -41,7 +41,7 @@ const int kKernelSize = 3;
  */
 int component_size_threshold = 0;
 int curve_length_threshold = 0;
-int max_point_distance = 5;
+int max_point_distance = 1;
 int max_segment_length;
 const int kMaxPointDistance = 30;
 
@@ -54,6 +54,8 @@ const int kNumPhases = 6; // 0 .. kNumPhases
 const int kPlotWrongCircumcircle = false;
 // Samples 4 percent of the triangles.
 const int kPlotRandCircumcircle = false;
+// Number of fixing splits.
+const int kNumSplitOperations = 5;
 
 namespace mesh_generation {
 
@@ -203,7 +205,7 @@ void PrintDenaulayStats (const DelaunayMesh& mesh) {
 void MeshGeneration(int, void*) {
   clock_t begin_time = clock();
   DelaunayMesh mesh(Point(image_source.cols, image_source.rows),
-                    simplified_curves);
+                    simplified_curves, kNumSplitOperations );
 	// Verifies mesh correctness O(n^2).
 	assert(mesh.IsValidDelaunay());
   mesh.PlotTriangulation(kPlotWrongCircumcircle, kPlotRandCircumcircle);
