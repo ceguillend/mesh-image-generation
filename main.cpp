@@ -51,9 +51,13 @@ const int kMaxPointDistance = 30;
 int display_phase = 0;
 const int kNumPhases = 6; // 0 .. kNumPhases
 // Involves a O(N^2) check.
-const int kPlotWrongCircumcircle = false;
+const bool kPlotWrongCircumcircle = false;
 // Samples 4 percent of the triangles.
-const int kPlotRandCircumcircle = false;
+const bool kPlotRandCircumcircle = false;
+// Defines whether it generates the plot or not.
+const bool kDisplayTriangulation = true;
+// Defines whether a gnu plot is generated with with the safe circles.
+const bool kGnuDisplaySafeCircles = true;
 // Number of fixing splits.
 const int kNumSplitOperations = 5;
 
@@ -113,25 +117,25 @@ void write_process()
 
 void DisplayImageResult(int, void*) {
 	int q=0;
-	if(q++ == display_phase) {
+	if (q++ == display_phase) {
 		imshow(kWindowResult, image_source);
   }
-	if(q++ == display_phase) {
+	if (q++ == display_phase) {
 		imshow(kWindowResult, image_gray);
   }
-	if(q++ == display_phase) {
+	if (q++ == display_phase) {
 		imshow(kWindowResult, image_gray_blur);
   }
-	if(q++ == display_phase) {
+	if (q++ == display_phase) {
     imshow(kWindowResult, image_canny);
   }
-	if(q++ == display_phase) {
+	if (q++ == display_phase) {
 		imshow(kWindowResult, image_thinned_edge);
   }
-	if(q++ == display_phase) {
+	if (q++ == display_phase) {
 		imshow(kWindowResult, image_pixel_curve);
   }
-	if(q++ == display_phase) {
+	if (q++ == display_phase) {
 		imshow(kWindowResult, image_point_curve);
   }
 }
@@ -204,15 +208,16 @@ void PrintDenaulayStats (const DelaunayMesh& mesh) {
 
 void MeshGeneration(int, void*) {
   clock_t begin_time = clock();
-  DelaunayMesh mesh(Point(image_source.cols, image_source.rows),
-                    simplified_curves, kNumSplitOperations );
+  DelaunayMesh mesh(image_source.rows, image_source.cols, simplified_curves,
+                    kNumSplitOperations);
 	// Verifies mesh correctness O(n^2).
-	assert(mesh.IsValidDelaunay());
-  mesh.PlotTriangulation(kPlotWrongCircumcircle, kPlotRandCircumcircle);
   clock_t end_time = clock();
+  assert(mesh.IsValidDelaunay());
+  mesh.PlotTriangulation(false, false, true);
 
   PrintTime("Delaunay Triangulation", (end_time-begin_time) / CLOCKS_PER_SEC);
   PrintDenaulayStats(mesh);
+  imshow(kWindowResult, mesh.GetSafeRegion());
 }
 }  // namespace mesh_generation
 
@@ -267,7 +272,7 @@ int main( int argc, char** argv ) {
                      kMaxPointDistance, mesh_generation::CurvesGeneration);
 
   // Runs the algorithm, withe the paremets
-  cv::createButton("Triangulate!", mesh_generation::MeshGeneration);
+  cv::createButton("Mesh Processing", mesh_generation::MeshGeneration);
 
 	// Show the image
 	mesh_generation::CurvesGeneration(0, nullptr);

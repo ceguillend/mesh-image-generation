@@ -23,7 +23,7 @@ const int kEdge = 255;
 const int kRowDir[] = {-1, 1, 0, 0, 1, 1, -1, -1};
 const int kColDir[] = {0, 0, -1, 1, -1, 1, -1, 1};
 const int kNumNeighbors = 8;
-// Size of a plotted point in pixels. 
+// Size of a plotted point in pixels.
 const int kPointSize = 3;
 
 class Dsu {
@@ -53,7 +53,7 @@ void FindPixelCurves(const Mat& canny_edge, int min_component_size,
                       int curve_length_threshold,
                       list< vector<Point> >* point_curves,
                       Mat* curves_plot) {
-
+  assert(canny_edge.type() == CV_8UC1);
   vector<Pixel> vertices;
   for (int i = 0; i < canny_edge.rows; ++i) {
     for (int j = 0; j < canny_edge.cols; ++j) {
@@ -63,8 +63,8 @@ void FindPixelCurves(const Mat& canny_edge, int min_component_size,
     }
   }
   sort(vertices.begin(), vertices.end());
-  // MST: ortogonal_edges = 0, diagonal_edges = 1 
-  Dsu dsu(vertices.size()); 
+  // MST: ortogonal_edges = 0, diagonal_edges = 1
+  Dsu dsu(vertices.size());
   // Tree.
   vector< vector<int> > tree(vertices.size());
   for (int edge_type = 0; edge_type < 2; ++edge_type) {
@@ -112,7 +112,7 @@ void FindPixelCurves(const Mat& canny_edge, int min_component_size,
               curve_ref[next] = curves.insert(curves.end(), vector<int>());
             } else {
               pixel_color[next] = pixel_color[current];
-              curve_ref[next] = curve_ref[current]; 
+              curve_ref[next] = curve_ref[current];
             }
             dfs.push(next);
           }
@@ -183,7 +183,7 @@ void SimplifyPointCurves(const std::list<std::vector<Point>>& point_curves,
         //find farthest point
         for (int pos = left + 1; pos < right; ++pos) {
           const double dist = fabs(a * curve[pos].x + b * curve[pos].y + c)
-                                  / norm;	
+                                  / norm;
           if (Cmp(far_dist, dist) < 0 ) {
             far_dist = dist;
             split_pos = pos;
@@ -201,7 +201,7 @@ void SimplifyPointCurves(const std::list<std::vector<Point>>& point_curves,
           segments.push(pair<int, int> (split_pos, right));
           segments.push(pair<int, int> (left, split_pos));
         }
-      } 
+      }
       if (!split) {
         // Final segment.
         simplified_curve.push_back(curve[left]);
