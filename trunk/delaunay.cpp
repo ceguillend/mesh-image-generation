@@ -11,6 +11,7 @@ using std::string;
 using std::pair;
 using std::make_pair;
 using std::list;
+using cv::Mat;
 
 const int kTriangleSides = 3;
 const double kInfinite = 1./0.;
@@ -18,6 +19,8 @@ const int kP2Id = 0;
 const int kP1Id = 1;
 const int kNullId = -1;
 const int kTriangleRoot = 0;
+const bool kPlotSafeRegion = false;
+const int kSafeRegion = 255;
 
 namespace {
 pair<int, int> minMaxPair(int a, int b) {
@@ -39,11 +42,12 @@ DelaunayTriangle::DelaunayTriangle(std::vector<int> point_ids,
   assert(triangle_neighbor_ids.size() == 3);
 }
 
-DelaunayMesh::DelaunayMesh(Point lexicographically_bigger,
+DelaunayMesh::DelaunayMesh(int height, int width,
                            const list< vector<Point> >& simplified_curves,
                            int num_split_operations) {
   assert(num_split_operations >= 0);
   _total_query_operations = 0;
+  Point lexicographically_bigger(width, height);
   // Creates the "outside-triangle" which is big enough to contain any triangle
   // inserted, the coordinates of the imaginary points are not actually used.
   int p2_id = PointId(Point(kInfinite, kInfinite));
@@ -56,13 +60,17 @@ DelaunayMesh::DelaunayMesh(Point lexicographically_bigger,
   // Stores the points and constrains.
   for (const vector<Point>& curve: simplified_curves) {
     assert(curve.size() > 1);
-    for (int i = 1; i < curve.size(); ++i) {
-      assert(curve[i] != curve[i - 1]);
-      int point1 = PointId(curve[i]);
-      int point2 = PointId(curve[i - 1]);
-      assert(point1 != point2);
-      _constrains[minMaxPair(point1, point2)] = num_split_operations;
-      _unsatisfied_constrains.insert(minMaxPair(point1, point2));
+    for (int i = 0; i < curve.size(); ++i) {
+      assert(Cmp(0, curve[i].x) <= 0 && Cmp(curve[i].x, width-1) <= 0);
+      assert(Cmp(0, curve[i].y) <= 0 && Cmp(curve[i].y, height-1) <= 0);
+      if (i) {
+        assert(curve[i] != curve[i - 1]);
+        int point1 = PointId(curve[i]);
+        int point2 = PointId(curve[i - 1]);
+        assert(point1 != point2);
+        _constrains[minMaxPair(point1, point2)] = num_split_operations;
+        _unsatisfied_constrains.insert(minMaxPair(point1, point2));
+      }
     }
   }
   vector<int> point_ids;
@@ -94,6 +102,38 @@ DelaunayMesh::DelaunayMesh(Point lexicographically_bigger,
     ++num_inserted_points;
   }
   printf("Number of additional points inserted: %d\n", num_inserted_points);
+  PairSet initial_constrains;
+  PairSet final_constrains;
+
+  GetSatisfiedConstrains(&initial_constrains);
+  // Obtains the safe region
+  GetSafeRegion(kPlotSafeRegion, height, width, &_safe_region);
+  vector<Point> inner_region_points;
+  for (int row = 0; row < height; ++row) {
+    for (int col = 0; col < width; ++col) {
+      if (_safe_region.at<uchar>(row, col) != kSafeRegion) {
+        inner_region_points.push_back(Pixel(row, col).ToPoint(height));
+      }
+    }
+  }
+  int sample_size = min(PointSetSize() / 3,
+                        (int)inner_region_points.size()/100);
+  for (int i = 0; i < inner_region_points.size(); ++i) {
+    int p = rand() % (i + 1);
+    if (p < sample_size) {
+      swap(inner_region_points[p], inner_region_points[i]);
+    }
+  }
+  for (int i = 0; i < sample_size; ++i) {
+    InsertPoint(PointId(inner_region_points[i]));
+  }
+  printf("Number of inner points inserted: %d\n", num_inserted_points);
+  GetSatisfiedConstrains(&final_constrains);
+
+  // Checks the constrains preservation.
+  for (const pair<int, int>& constrain: initial_constrains) {
+    assert(final_constrains.count(constrain) > 0);
+  }
 }
 
 int DelaunayMesh::PointId(const Point& point) {
@@ -485,6 +525,35 @@ void DelaunayMesh::InsertPoint(int point_id) {
   }
 }
 
+void DelaunayMesh::GetSatisfiedConstrains(PairSet* satisfied_constrains) const {
+  for (const DelaunayTriangle& triangle: _triangles) {
+    // Plots only the leaves.
+    if(triangle.triangle_child_ids.empty()) {
+      // Plots connectivity among points.
+      for (int i = 0; i < kTriangleSides; ++i) {
+        int beg_point_id = triangle.point_ids[i];
+        int end_point_id = triangle.point_ids[(i + 1) % 3];
+        if (!IsInfinitePoint(beg_point_id) &&
+            !IsInfinitePoint(end_point_id)) {
+          const Point& beg_point = GetPoint(beg_point_id);
+          const Point& end_point = GetPoint(end_point_id);
+          if (beg_point == end_point) {
+            fprintf(stderr, "%.6f %.6f\n%.6f %.6f\n\n", beg_point.x,
+                beg_point.y, end_point.x, end_point.y);
+            fprintf(stderr, "%d %d\n", beg_point_id, end_point_id);
+          }
+          assert (beg_point != end_point);
+          const auto segment = minMaxPair(beg_point_id, end_point_id);
+          // Makes sure that the edge is printed only once.
+          if (beg_point_id < end_point_id && _constrains.count(segment)) {
+            satisfied_constrains->insert(segment);
+          }
+        }
+      }
+    }
+  }
+}
+
 void DelaunayMesh::SavePointsToFile(const string& file_name, double* min_x,
                                     double* max_x, double* min_y,
                                     double* max_y) const {
@@ -549,20 +618,24 @@ bool DelaunayMesh::IsValidTriangle(const DelaunayTriangle& triangle) const {
 }
 
 bool DelaunayMesh::IsValidDelaunay() const {
+  printf("Checking Delaunay Correctness ...\n");
   for (const DelaunayTriangle& triangle: _triangles) {
     // Only checks with triangle leaves.
     if (triangle.triangle_child_ids.empty()) {
       if(!IsValidTriangle(triangle)) {
+        printf("\nCheck done: Delaunay is incorrect!!\n\n");
         return false;
       }
    }
   }
+  printf("\nCheck done: Delaunay is correct!!\n\n");
   return true;
 }
 
 
 void DelaunayMesh::PlotTriangulation(bool wrong_circles,
-                                     bool rand_circles) const {
+                                     bool rand_circles,
+                                     bool display_result) const {
   double min_x;
   double max_x;
   double min_y;
@@ -580,7 +653,10 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
 
   fprintf(plot_file, "set xr [%lf : %lf]\n", min_x - xs, max_x + xs);
   fprintf(plot_file, "set yr [%lf : %lf]\n", min_y - ys, max_y + ys);
-  fprintf(plot_file, "set style arrow 1 nohead\n");
+  fprintf(plot_file, "set style line 1 lc rgb \"#8D8D8D\"\n");
+  fprintf(plot_file, "set style line 2 lc rgb \"#0000FF\"\n");
+  fprintf(plot_file, "set style arrow 1 nohead ls 1\n");
+  fprintf(plot_file, "set style arrow 2 nohead ls 2\n");
 
   // Contains the center of the circle and radius.
   FILE* circles_file = fopen("data_circles","w");
@@ -605,16 +681,21 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
           const Point& beg_point = GetPoint(beg_point_id);
           const Point& end_point = GetPoint(end_point_id);
           if (beg_point == end_point) {
-            printf("%.6f %.6f\n%.6f %.6f\n\n", beg_point.x, beg_point.y,
-                                               end_point.x, end_point.y);
-            printf("%d %d\n", beg_point_id, end_point_id);
+            fprintf(stderr, "%.6f %.6f\n%.6f %.6f\n\n", beg_point.x,
+                    beg_point.y, end_point.x, end_point.y);
+            fprintf(stderr, "%d %d\n", beg_point_id, end_point_id);
           }
           assert (beg_point != end_point);
           // Makes sure that the edge is printed only once.
-          if (beg_point < end_point) {
+          if (beg_point_id < end_point_id) {
             // Plot file is linear in the number of points.
-            fprintf(plot_file, "set arrow from %lf,%lf to %lf,%lf as 1\n",
-                    beg_point.x, beg_point.y, end_point.x, end_point.y);
+            if (_constrains.count(minMaxPair(beg_point_id, end_point_id))) {
+              fprintf(plot_file, "set arrow from %lf,%lf to %lf,%lf as 2\n",
+                      beg_point.x, beg_point.y, end_point.x, end_point.y);
+            } else {
+              fprintf(plot_file, "set arrow from %lf,%lf to %lf,%lf as 1\n",
+                  beg_point.x, beg_point.y, end_point.x, end_point.y);
+            }
           }
         }
       }
@@ -689,11 +770,121 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
     fprintf(plot_file, "     \"data_circle_points\" with points pt 7 lc rgb"
             " \"green\"");
   }
-  fprintf(plot_file, "\n");
+  //fprintf(plot_file, "\n");
   fclose(plot_file);
 
-  system("killall gnuplot");
-  system("gnuplot -persist graph.conf");
+  if (display_result) {
+    system("killall gnuplot");
+    system("gnuplot -persist graph.conf");
+  }
+}
+
+void DelaunayMesh::GetSafeRegion(bool gnu_plot, int height, int width,
+                                 Mat* safe_region) const {
+  FILE* safe_circles_file;
+  if (gnu_plot) {
+    safe_circles_file = fopen("data_safe_circles", "w");
+  }
+  *safe_region = Mat::zeros(height, width, CV_8UC1);
+  // Appends the safe circle information to the plot configuartion file.
+  for (int triangle_id = 0; triangle_id < _triangles.size(); ++triangle_id) {
+    const DelaunayTriangle& triangle = GetTriangleVal(triangle_id);
+    // Plots only the leaves.
+    if(triangle.triangle_child_ids.empty()) {
+      // Plots connectivity among points.
+      for (int side_id = 0; side_id < kTriangleSides; ++side_id) {
+        int I = triangle.point_ids[side_id];
+        int J = triangle.point_ids[(side_id + 1) % 3];
+        int K = triangle.point_ids[(side_id + 2) % 3];
+        if (!IsInfinitePoint(I) &&
+            !IsInfinitePoint(J)) {
+          const Point& beg_point = GetPoint(I);
+          const Point& end_point = GetPoint(J);
+          if (beg_point == end_point) {
+            fprintf(stderr, "%.6f %.6f\n%.6f %.6f\n\n", beg_point.x,
+                beg_point.y, end_point.x, end_point.y);
+            fprintf(stderr, "%d %d\n", I, J);
+          }
+          assert (beg_point != end_point);
+          // Makes sure that the edge is printed only once.
+          if (I < J) {
+            if (_constrains.count(minMaxPair(I, J))) {
+              int neighbor_id = triangle.triangle_neighbor_ids[side_id];
+              assert (GetTriangleVal(neighbor_id).triangle_child_ids.empty());
+              int neighbor_side =  NeighborSide(neighbor_id, triangle_id);
+              int L = GetTriangleVal(neighbor_id)
+                      .point_ids[(neighbor_side + 2) %3];
+              const Point pI = GetPoint(I);
+              const Point pJ = GetPoint(J);
+              const Point pK = GetPoint(K);
+              const Point pL = GetPoint(L);
+              Point center = (pI + pJ) / 2;
+              double radius = center.Dist(pI);
+              bool ok = true;
+              if (!IsInfinitePoint(K)) {
+                ok &= Cmp(center.Dist(pK), radius) >= 0;
+              }
+              if (ok && !IsInfinitePoint(L)) {
+                ok &= Cmp(center.Dist(pL), radius) >= 0;
+              }
+              // Circle with diameter on the edge.
+              if (ok) {
+                if (gnu_plot) {
+                  fprintf(safe_circles_file, "%.4lf %.4lf %.4lf\n", center.x,
+                          center.y, radius);
+                }
+                Pixel center_pixel = center.ToPixel(height);
+                // Draws the circle on safe_region.
+                cv::circle(*safe_region,
+                    cv::Point(center.x, height - 1 - center.y),
+                    radius+2, cv::Scalar(kSafeRegion), -1);
+                continue;
+              }
+              // Circles passing through circumcircles of adjacent neighbors.
+              assert(!(IsInfinitePoint(K) && IsInfinitePoint(L)));
+              radius = 1./0.;
+              if (!IsInfinitePoint(K)) {
+                Circumcircle(pI, pJ, pK, &center, &radius);
+              }
+              if (!IsInfinitePoint(L)) {
+                Point qcenter;
+                double qradius;
+                Circumcircle(pI, pJ, pL, &qcenter, &qradius);
+                if (Cmp(qradius, radius) < 0) {
+                  radius = qradius;
+                  center = qcenter;
+                }
+              }
+              if (gnu_plot) {
+                fprintf(safe_circles_file, "%.4lf %.4lf %.4lf\n", center.x,
+                        center.y, radius);
+              }
+              Pixel center_pixel = center.ToPixel(height);
+              // Draws the circle on safe_region.
+              cv::circle(*safe_region,
+                         cv::Point(center.x, height - 1 - center.y),
+                         radius+2, cv::Scalar(kSafeRegion), -1);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  if (gnu_plot) {
+    fclose(safe_circles_file);
+    // Generates the plot configuration file for the triangle mesh.
+    PlotTriangulation(false, false, false);
+
+    // Adding the plot safe circles command.
+    FILE* plot_file = fopen("graph.conf", "a");
+    fprintf(plot_file, ", \\\n     \"data_safe_circles\" with circles lw 1"
+        " lc rgb \"red\" fill solid noborder");
+    fclose(plot_file);
+
+    system("killall gnuplot");
+    system("gnuplot -persist graph.conf");
+  }
 }
 
 int DelaunayMesh::TriangleTreeSize() const {
@@ -707,4 +898,9 @@ int DelaunayMesh::PointSetSize() const {
 double DelaunayMesh::AverageInsertionCost() const {
   return ((double)_total_query_operations)/(_points.size()-3);
 }
+
+const cv::Mat& DelaunayMesh::GetSafeRegion() const {
+  return _safe_region;
+}
+
 }  // namespace mesh_generation

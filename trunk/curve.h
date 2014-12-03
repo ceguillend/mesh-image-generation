@@ -7,8 +7,8 @@
 #include "basic_geo.h"
 #include "color_utils.h"
 #include "opencv2/imgproc/imgproc.hpp"
-#include <vector>
 #include <list>
+#include <vector>
 
 
 namespace mesh_generation {

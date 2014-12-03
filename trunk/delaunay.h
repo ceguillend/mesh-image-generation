@@ -5,13 +5,14 @@
 #define DELAUNAY_H_
 
 #include "basic_geo.h"
-#include <string>
+#include "opencv2/imgproc/imgproc.hpp"
+#include <boost/functional/hash.hpp>
 #include <list>
-#include <vector>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
-#include <boost/functional/hash.hpp>
+#include <vector>
 
 namespace mesh_generation {
 
@@ -65,11 +66,12 @@ struct DelaunayTriangle {
 class DelaunayMesh {
 public :
   /**
-   * Creates a delaunay mesh that will have the given point as the
-   * lexicographically bigger point among all the ones that will be latter
-   * inserted.
+   * Creates a delaunay mesh of an image with the given height and width. it
+   * tries to build the mesh trying to satisfy the segment constrains defined
+   * by the simplified_cuves, and it will refine each segment up to a
+   * num_split_operations times.
    */
-  DelaunayMesh(Point lexicographically_bigger,
+  DelaunayMesh(int height, int width,
                const std::list< vector<Point> >& simplified_curves,
                int num_split_operations);
 
@@ -100,7 +102,8 @@ public :
    * @param rand_circles Plots random circumcircles, plotting around 4% of the
    *        total number of circumcircles.
    */
-  void PlotTriangulation(bool wrong_circles, bool rand_circles) const;
+  void PlotTriangulation(bool wrong_circles, bool rand_circles,
+                         bool display_result) const;
 
   /**
    * @return The total number of triangles in the triangle tree.
@@ -116,6 +119,11 @@ public :
    * @return The number of triangles visited on every insertion operation.
    */
   double AverageInsertionCost() const;
+
+  /**
+   * @return The reference to the safe region used to build the mesh.
+   */
+  const cv::Mat& GetSafeRegion() const;
 
 private:
   /**
@@ -248,6 +256,18 @@ private:
   void SavePointsToFile(const std::string& file_name, double* min_x,
                         double* max_x, double* min_y, double* max_y) const;
   /**
+   * Plots the delaunay triangulation and the safe circles described by the
+   * constrained edges.
+   */
+  void GetSafeRegion(bool gnu_plot, int height, int width,
+      cv::Mat* safe_region) const;
+
+  /**
+   * Obtains the current set of satisfied constrains.
+   */
+  void GetSatisfiedConstrains(PairSet* satisfied_constrains) const;
+
+  /**
    * Set of points associated with their point ids.
    */
   std::map<Point, int> _point_to_id;
@@ -273,10 +293,14 @@ private:
    */
   std::unordered_set<int> _inserted_points;
   /**
-   * Each position contains .
+   * Each position contains.
    */
   std::vector<DelaunayTriangle> _triangles;
 
+  /**
+   * Safe region.
+   */
+  cv::Mat _safe_region;
   /**
    * Number of triangles visited through all the queries.
    */
