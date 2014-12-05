@@ -21,7 +21,7 @@ int Cmp(double a, double b);
 /**
 * Returns the square of the value.
 */
-double Sqr(double a);
+long double Sqr(long double a);
 
 struct Pixel;
 /**
@@ -49,6 +49,11 @@ struct Point {
    * Returns a ortogonal vector.
    */
 	Point Ort() const;
+
+  /**
+   * @return the vector with the same direction, but modulus equal to one.
+   */
+  Point Unit() const;
 
   /**
    * Returns the distance to the Point a.
@@ -104,16 +109,20 @@ void Circumcircle(Point a, Point b, Point c, Point* center , double* r);
  * Checks if a point is strictly inside a circumcircle.
  *
  * @param d The point to be checked.
- * @param a,b,c The points of the triangle in clockwise order.
+ * @param a,b,c The points of the triangle in counter-clockwise order.
  */
 bool IsInsideCircumcircle(const Point& d, const Point& a, const Point& b,
                           const Point& c);
 
 /**
- * Calculates the centroid of a set of Points.
+ * Calculates the mean point of the polygon given in counter-clockwise order.
  */
-Point Centroid(const vector<Point>& Points);
-Pixel Centroid(const vector<Pixel>& pixels);
+Point MeanPoint(const vector<Point>& points);
+
+/**
+ * Calculates the centroid of the polygon given in counter-clockwise order.
+ */
+Point Centroid(const vector<Point>& points);
 
 }  // namespace mesh_generation
 #endif

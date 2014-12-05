@@ -66,6 +66,11 @@ struct DelaunayTriangle {
 class DelaunayMesh {
 public :
   /**
+   * Does not initialize the delaunay mesh at all.
+   */
+  DelaunayMesh();
+
+  /**
    * Creates a delaunay mesh of an image with the given height and width. it
    * tries to build the mesh trying to satisfy the segment constrains defined
    * by the simplified_cuves, and it will refine each segment up to a
@@ -74,6 +79,15 @@ public :
   DelaunayMesh(int height, int width,
                const std::list< vector<Point> >& simplified_curves,
                int num_split_operations);
+
+  /**
+   * Builds the delaunay triangulation by inserting the points that appear
+   * in the segment_constrains, if one of the segments doesn't show up after
+   * inserting the points an assertion error is thrown.
+   */
+  DelaunayMesh(int height, int width,
+               const std::vector< std::pair<Point,
+                                            Point> >& segment_constrains);
 
   /**
    * Checks if the current triangulation satisfies the delaunay properties.
@@ -101,9 +115,11 @@ public :
    *        procedure takes O(N^2) operations, where N is the number of points.
    * @param rand_circles Plots random circumcircles, plotting around 4% of the
    *        total number of circumcircles.
+   * @param kill_other_plots defines if other plotting process are going to be
+   *        killed or not.
    */
   void PlotTriangulation(bool wrong_circles, bool rand_circles,
-                         bool display_result) const;
+                         bool display_result, bool kill_other_plots) const;
 
   /**
    * @return The total number of triangles in the triangle tree.
@@ -125,7 +141,40 @@ public :
    */
   const cv::Mat& GetSafeRegion() const;
 
-private:
+  /**
+   * @return The set of points that belongs to a constrained delaunay edge.
+   */
+  void GetConstrainedPoints(vector<Point>* constrained_points) const;
+
+  /**
+   * @return A random set of safe points, with size equal to the fraction of the
+   * fraction given in the input of the total number of safe points.
+   */
+  void GetRandSafePoints(double fraction, vector<Point>* safe_points) const;
+
+  /**
+   * @return The set of non constrained points, after applying the modified
+   * Lloyd iteration, which preserves the constrained segments.
+   */
+  void GetUnconstrainedAdjustedPoints(vector<Point>* adjusted_points) const;
+
+  /**
+   * Inserts a safe set of points to the current delaunay triangulation. Note
+   * that every point in the set should be lexicografically less than the
+   * coordinate (width, height) used in the constructor and the points should
+   * not break the existing constrains, otherwise the function will rise an
+   * assertion error. It is expected to have  a unique set of points.
+   */
+  void InsertSafePoints(const vector<Point>& safe_points);
+
+  /**
+   * @return the set of constrained edges that appear in the delaunay
+   * triangulation.
+   */
+  void GetMinimalConstrainSet(
+            vector< std::pair<Point, Point> >* minimal_constrain_set) const;
+
+ private:
   /**
    * Inserts the given point to the delaunay triangulation.
    *
@@ -268,6 +317,13 @@ private:
   void GetSatisfiedConstrains(PairSet* satisfied_constrains) const;
 
   /**
+   * @return The safe circle of segment, described by the side_index of
+   * triangle with the triangle_id.
+   */
+   void GetSafeCircle(int triangle_id, int side_ind, Point* center,
+                      double* radius) const;
+
+  /**
    * Set of points associated with their point ids.
    */
   std::map<Point, int> _point_to_id;
@@ -292,6 +348,7 @@ private:
    * Holds whether the point ids have been inserted or not.
    */
   std::unordered_set<int> _inserted_points;
+
   /**
    * Each position contains.
    */
@@ -301,6 +358,12 @@ private:
    * Safe region.
    */
   cv::Mat _safe_region;
+
+  /**
+   * The set of movable points (safe points).
+   */
+  std::unordered_set<int> movable_point_ids;
+
   /**
    * Number of triangles visited through all the queries.
    */

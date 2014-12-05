@@ -2,25 +2,32 @@
 #include <assert.h>
 #include <stdio.h>
 #include <algorithm>
+#include <stack>
 
-using std::vector;
-using std::swap;
-using std::max;
-using std::min;
-using std::string;
-using std::pair;
-using std::make_pair;
-using std::list;
 using cv::Mat;
+using std::list;
+using std::max;
+using std::make_pair;
+using std::min;
+using std::pair;
+using std::stack;
+using std::string;
+using std::swap;
+using std::vector;
 
 const int kTriangleSides = 3;
 const double kInfinite = 1./0.;
 const int kP2Id = 0;
 const int kP1Id = 1;
-const int kNullId = -1;
+const int kNullId = -66666666;
 const int kTriangleRoot = 0;
 const bool kPlotSafeRegion = false;
 const int kSafeRegion = 255;
+/**
+ * 4-pixel neighborhood.
+ */
+const vector<int> row_4nei =  {1,-1,0,0};
+const vector<int> col_4nei =  {0,0,1,-1};
 
 namespace {
 pair<int, int> minMaxPair(int a, int b) {
@@ -42,6 +49,8 @@ DelaunayTriangle::DelaunayTriangle(std::vector<int> point_ids,
   assert(triangle_neighbor_ids.size() == 3);
 }
 
+DelaunayMesh::DelaunayMesh() {}
+
 DelaunayMesh::DelaunayMesh(int height, int width,
                            const list< vector<Point> >& simplified_curves,
                            int num_split_operations) {
@@ -50,8 +59,8 @@ DelaunayMesh::DelaunayMesh(int height, int width,
   Point lexicographically_bigger(width, height);
   // Creates the "outside-triangle" which is big enough to contain any triangle
   // inserted, the coordinates of the imaginary points are not actually used.
-  int p2_id = PointId(Point(kInfinite, kInfinite));
-  int p1_id = PointId(Point(-kInfinite, -kInfinite));
+  int p2_id = PointId(Point(-kInfinite, kInfinite));
+  int p1_id = PointId(Point(kInfinite, -kInfinite));
   int p0_id = PointId(lexicographically_bigger);
 
   int outer_triangle_id = AllocateNewTriangle();
@@ -102,38 +111,80 @@ DelaunayMesh::DelaunayMesh(int height, int width,
     ++num_inserted_points;
   }
   printf("Number of additional points inserted: %d\n", num_inserted_points);
-  PairSet initial_constrains;
-  PairSet final_constrains;
 
-  GetSatisfiedConstrains(&initial_constrains);
-  // Obtains the safe region
+  PairSet satisfied_constrains;
+  GetSatisfiedConstrains(&satisfied_constrains);
+
+  vector< pair<int, int> > unused_constrains;
+
+  // Clears the unsatisfied constrains.
+  for (const auto& constrain: _constrains) {
+    if (satisfied_constrains.count(constrain.first) == 0) {
+      unused_constrains.push_back(constrain.first);
+    }
+  }
+  for (const auto& constrain: unused_constrains) {
+    _constrains.erase(constrain);
+  }
   GetSafeRegion(kPlotSafeRegion, height, width, &_safe_region);
-  vector<Point> inner_region_points;
-  for (int row = 0; row < height; ++row) {
-    for (int col = 0; col < width; ++col) {
-      if (_safe_region.at<uchar>(row, col) != kSafeRegion) {
-        inner_region_points.push_back(Pixel(row, col).ToPoint(height));
-      }
-    }
-  }
-  int sample_size = min(PointSetSize() / 3,
-                        (int)inner_region_points.size()/100);
-  for (int i = 0; i < inner_region_points.size(); ++i) {
-    int p = rand() % (i + 1);
-    if (p < sample_size) {
-      swap(inner_region_points[p], inner_region_points[i]);
-    }
-  }
-  for (int i = 0; i < sample_size; ++i) {
-    InsertPoint(PointId(inner_region_points[i]));
-  }
-  printf("Number of inner points inserted: %d\n", num_inserted_points);
-  GetSatisfiedConstrains(&final_constrains);
+}
 
-  // Checks the constrains preservation.
-  for (const pair<int, int>& constrain: initial_constrains) {
-    assert(final_constrains.count(constrain) > 0);
+DelaunayMesh::DelaunayMesh(int height, int width,
+                           const vector< pair<Point,
+                                              Point> >& segment_constrains) {
+  _total_query_operations = 0;
+  Point lexicographically_bigger(width, height);
+  // Creates the "outside-triangle" which is big enough to contain any triangle
+  // inserted, the coordinates of the imaginary points are not actually used.
+  int p2_id = PointId(Point(-kInfinite, kInfinite));
+  int p1_id = PointId(Point(kInfinite, -kInfinite));
+  int p0_id = PointId(lexicographically_bigger);
+
+  int outer_triangle_id = AllocateNewTriangle();
+  GetTriangleRef(outer_triangle_id).point_ids = {p2_id, p0_id, p1_id};
+  for (const pair<Point, Point>& constrain: segment_constrains) {
+    int point1_id = PointId(constrain.first);
+    int point2_id = PointId(constrain.second);
+    // Does not allow splitting procedures.
+    _constrains[minMaxPair(point1_id, point2_id)] = 0;
   }
+  vector<int> point_ids;
+  for (int point_id = 3; point_id < _points.size(); ++point_id) {
+    point_ids.push_back(point_id);
+  }
+  for (int i = 0; i < point_ids.size(); ++i) {
+    swap(point_ids[i], point_ids[rand() % (i + 1)]);
+  }
+  for (int i = 0; i < point_ids.size(); ++i) {
+    InsertPoint(point_ids[i]);
+  }
+  // Check constrains.
+  PairSet satisfied_constrains;
+  GetSatisfiedConstrains(&satisfied_constrains);
+  int constrains_preserved = 0;
+  for (const pair<Point, Point>& constrain: segment_constrains) {
+    int point1_id = PointId(constrain.first);
+    int point2_id = PointId(constrain.second);
+    bool valid = satisfied_constrains.count(minMaxPair(point1_id, point2_id));
+    constrains_preserved += valid;
+    /*
+    assert(valid || !(std::cerr << width << " " << height << std::endl
+                                << constrain.first.x << " "
+                                << constrain.first.y << std::endl
+                                << constrain.second.x << " "
+                                << constrain.second.y << std::endl));
+    */
+  }
+  // The assertion is not made to be constrains_preserved == segment_constrains.
+  // since there can be double approximation errors (like cocircular points),
+  // and it is possible that the point (width, height) might have not been
+  // included in the set of original constrains thus breaking some other
+  // constrains. The difference value is just an empirical estimation.
+  assert(constrains_preserved <= segment_constrains.size());
+  assert(segment_constrains.size() - constrains_preserved <= 10 ||
+         !(std::cerr << constrains_preserved << " out of "
+                     << segment_constrains.size() << std::endl));
+  GetSafeRegion(kPlotSafeRegion, height, width, &_safe_region);
 }
 
 int DelaunayMesh::PointId(const Point& point) {
@@ -237,7 +288,8 @@ int DelaunayMesh::FindEnclosingTriangle(const Point& point) {
         break;
       }
     }
-    assert (next_triangle_id != kNullId);
+    assert(next_triangle_id != kNullId ||
+           !(std::cerr << point.x << " " << point.y << std::endl));
     triangle_id = next_triangle_id;
   }
   return triangle_id;
@@ -249,6 +301,8 @@ void DelaunayMesh::UpdateNeighbor(int triangle_id, int old_neighbor,
   if (triangle_id == kNullId) {
     return;
   }
+  assert(GetTriangleVal(triangle_id).triangle_child_ids.empty());
+  assert(GetTriangleVal(new_neighbor).triangle_child_ids.empty());
   for (int& neighbor_id : GetTriangleRef(triangle_id).triangle_neighbor_ids) {
     if (neighbor_id == old_neighbor) {
       neighbor_id = new_neighbor;
@@ -262,7 +316,7 @@ void DelaunayMesh::UpdateNeighbor(int triangle_id, int old_neighbor,
 int DelaunayMesh::NeighborSide(int triangle_id, int neighbor_id) const {
   for (int side_index = 0; side_index < kTriangleSides; ++side_index) {
     if (neighbor_id ==
-            GetTriangleVal(triangle_id).triangle_neighbor_ids[side_index]) {
+        GetTriangleVal(triangle_id).triangle_neighbor_ids[side_index]) {
       return side_index;
     }
   }
@@ -272,31 +326,42 @@ int DelaunayMesh::NeighborSide(int triangle_id, int neighbor_id) const {
 
 
 void DelaunayMesh::LegalizeSide(int triangle_id, int side_index) {
+  assert(GetTriangleVal(triangle_id).triangle_child_ids.empty());
   int neighbor_id = GetTriangleVal(triangle_id)
-                        .triangle_neighbor_ids[side_index];
+    .triangle_neighbor_ids[side_index];
   if (neighbor_id == kNullId) {
-    // Checks the case of the outside triangle, always valid.
+    // It must be the outer triangle, does not need legalizations.
+    bool outer = false;
+    for (int point_id: GetTriangleVal(triangle_id).point_ids) {
+      outer |= IsInfinitePoint(point_id);
+    }
+    assert(outer);
     return ;
   }
+  assert(GetTriangleVal(neighbor_id).triangle_child_ids.empty());
   int neighbor_side_index = NeighborSide(neighbor_id, triangle_id);
   // Related points.
   // At most one point in the side can be infinite.
   int I = GetTriangleVal(triangle_id).point_ids[side_index];
   int J = GetTriangleVal(triangle_id)
-              .point_ids[(side_index + 1) % kTriangleSides];
+    .point_ids[(side_index + 1) % kTriangleSides];
   int K = GetTriangleVal(triangle_id)
-              .point_ids[(side_index + 2) % kTriangleSides];
+    .point_ids[(side_index + 2) % kTriangleSides];
   int L = GetTriangleVal(neighbor_id)
-              .point_ids[(neighbor_side_index + 2) % kTriangleSides];
-  // K is check point (initially the newly inserted point), never infinite.
+    .point_ids[(neighbor_side_index + 2) % kTriangleSides];
+  // K is inserted point, i.e. never infinite.
   assert(!IsInfinitePoint(K));
+  // The case where both I and J are infinite can only happen in the,
+  // outer triangle.
+  assert(IsInfinitePoint(I) + IsInfinitePoint(J)  <= 1);
+
   bool ilegal_edge = false;
   if (!IsInfinitePoint(I) &&
       !IsInfinitePoint(J) &&
       !IsInfinitePoint(L)) {
-    // All are normal points.
+    // All are normal points (counter-clockwise).
     ilegal_edge = IsInsideCircumcircle(GetPoint(L),
-                                       GetPoint(I), GetPoint(J), GetPoint(K));
+        GetPoint(I), GetPoint(J),GetPoint(K));
   } else {
     if(!IsInfinitePoint(L)) {
       // One of the elements of the edge is an infinite point.
@@ -305,21 +370,25 @@ void DelaunayMesh::LegalizeSide(int triangle_id, int side_index) {
       }
       // GetPoint(L) < GetPoint(K), lexicografical orter.
       if (I > J) {
+        // I: holds the infinite vertex.
         swap(I, J);
       }
-      // I: holds the infinite vertex.
+      // Given that between K and L exists a segment IJ connecting to a
+      // infinite point I that implies that J is between the lexicographycal
+      // order of L and K,
       assert(GetPoint(L) < GetPoint(J) && GetPoint(J) < GetPoint(K));
 
       if (I == kP1Id) { // p-1
         // Flips only if convex.
         ilegal_edge = Cmp((GetPoint(J) - GetPoint(L)) ^
-                          (GetPoint(K) - GetPoint(L)) , 0) < 0 ;
+            (GetPoint(K) - GetPoint(L)) , 0) < 0 ;
       } else if (I == kP2Id) { // I == 0 // p-2
         // Flips only if convex.
         ilegal_edge = Cmp((GetPoint(J) - GetPoint(L)) ^
-                          (GetPoint(K) - GetPoint(L)) , 0) > 0 ;
+            (GetPoint(K) - GetPoint(L)) , 0) > 0 ;
       }
     } else {
+      // L is a infinite point, it is always a legal edge.
       ilegal_edge = false;
     }
   }
@@ -328,7 +397,7 @@ void DelaunayMesh::LegalizeSide(int triangle_id, int side_index) {
     vector<int> split_triangles = {triangle_id, neighbor_id};
     vector<int> side_indices = {side_index, neighbor_side_index};
     vector<int> triangle_children = {AllocateNewTriangle(),
-                                      AllocateNewTriangle()};
+                                     AllocateNewTriangle()};
     // Adjust the neighbor values and points of the new triangles.
     for (int i = 0; i < triangle_children.size(); ++i) {
       const auto& current_triangle = GetTriangleVal(split_triangles[i]);
@@ -348,9 +417,9 @@ void DelaunayMesh::LegalizeSide(int triangle_id, int side_index) {
       };
 
       UpdateNeighbor(GetTriangleVal(triangle_child).triangle_neighbor_ids[0],
-                     split_triangles[i], triangle_child);
+          split_triangles[i], triangle_child);
       UpdateNeighbor(GetTriangleVal(triangle_child).triangle_neighbor_ids[1],
-                     split_triangles[i ^ 1], triangle_child);
+          split_triangles[i ^ 1], triangle_child);
     }
     // Adds children to the split triangles.
     for (int split_triangle: split_triangles) {
@@ -387,16 +456,16 @@ void DelaunayMesh::InsertBorderPoint(int triangle_id, int point_id,
 
   // Creates two children per triangle.
   vector<int> triangle_children[] = {
-       {AllocateNewTriangle(), AllocateNewTriangle()},
-       {AllocateNewTriangle(), AllocateNewTriangle()}
+    {AllocateNewTriangle(), AllocateNewTriangle()},
+    {AllocateNewTriangle(), AllocateNewTriangle()}
   };
 
   // Updates the neighborhood and sets the new triangle's points.
   for (int i = 0; i < split_triangles.size(); ++i) {
     const auto& current_triangle = GetTriangleVal(split_triangles[i]);
     const int current_side = side_indices[i];
-    vector<int>& current_children = triangle_children[i];
-    vector<int>& oposite_children = triangle_children[i ^ 1];
+    const vector<int>& current_children = triangle_children[i];
+    const vector<int>& oposite_children = triangle_children[i ^ 1];
 
     // First child.
     GetTriangleRef(current_children[0]).point_ids = {
@@ -412,7 +481,7 @@ void DelaunayMesh::InsertBorderPoint(int triangle_id, int point_id,
     };
 
     UpdateNeighbor(GetTriangleVal(current_children[0]).triangle_neighbor_ids[2],
-                   split_triangles[i], current_children[0]);
+        split_triangles[i], current_children[0]);
 
     // Second child.
     GetTriangleRef(current_children[1]).point_ids = {
@@ -428,22 +497,22 @@ void DelaunayMesh::InsertBorderPoint(int triangle_id, int point_id,
     };
 
     UpdateNeighbor(GetTriangleVal(current_children[1]).triangle_neighbor_ids[1],
-                   split_triangles[i], current_children[1]);
+        split_triangles[i], current_children[1]);
 
     // Updates constrains.
     _unsatisfied_constrains
-        .erase(minMaxPair(point_id,
-                          current_triangle.point_ids[current_side]));
+      .erase(minMaxPair(point_id,
+            current_triangle.point_ids[current_side]));
     _unsatisfied_constrains
-        .erase(minMaxPair(point_id,
-                          current_triangle.point_ids[(current_side + 2) % 3]));
+      .erase(minMaxPair(point_id,
+            current_triangle.point_ids[(current_side + 2) % 3]));
   }
   vector<int> edge_points = {
     GetTriangleVal(triangle_id).point_ids[side_index],
     GetTriangleVal(triangle_id).point_ids[(side_index + 1) % 3]
   };
 
-  // Check removed edge.
+  // Check removed edge, for the constrains processing.
   const pair<int, int> rm_edge = minMaxPair(edge_points[0], edge_points[1]);
   const auto it = _constrains.find(rm_edge);
   if (it != _constrains.end()) {
@@ -460,7 +529,7 @@ void DelaunayMesh::InsertBorderPoint(int triangle_id, int point_id,
   // Adds children.
   for (int i = 0; i < split_triangles.size(); ++i) {
     GetTriangleRef(split_triangles[i]).triangle_child_ids =
-          triangle_children[i];
+      triangle_children[i];
   }
 
   // Legalize edges.
@@ -475,7 +544,7 @@ void DelaunayMesh::InsertInnerPoint(int triangle_id, int point_id) {
   assert(GetTriangleVal(triangle_id).triangle_child_ids.empty());
 
   vector<int> triangle_children = {AllocateNewTriangle(), AllocateNewTriangle(),
-                                   AllocateNewTriangle()};
+    AllocateNewTriangle()};
   // Sets the appropriate values to the newly created triangles.
   for (int i = 0 ; i < triangle_children.size(); ++i) {
     const int triangle_child = triangle_children[i];
@@ -491,9 +560,9 @@ void DelaunayMesh::InsertInnerPoint(int triangle_id, int point_id) {
       GetTriangleVal(triangle_id).triangle_neighbor_ids[i],
       triangle_children[(i + 1) % 3]
     };
-    // update the neighbor's information
+    // Update the neighbor's information and checks that the neighbor is a leaf.
     UpdateNeighbor(GetTriangleVal(triangle_id).triangle_neighbor_ids[i],
-                   triangle_id, triangle_child);
+        triangle_id, triangle_child);
   }
   // Sets the triangle's children
   GetTriangleRef(triangle_id).triangle_child_ids = triangle_children;
@@ -501,7 +570,7 @@ void DelaunayMesh::InsertInnerPoint(int triangle_id, int point_id) {
   // Updates constrains.
   for (int i = 0; i < kTriangleSides; ++i) {
     _unsatisfied_constrains
-        .erase(minMaxPair(point_id, GetTriangleVal(triangle_id).point_ids[i]));
+      .erase(minMaxPair(point_id, GetTriangleVal(triangle_id).point_ids[i]));
   }
   // Legalize edges.
   for (int triangle_child: triangle_children) {
@@ -555,8 +624,8 @@ void DelaunayMesh::GetSatisfiedConstrains(PairSet* satisfied_constrains) const {
 }
 
 void DelaunayMesh::SavePointsToFile(const string& file_name, double* min_x,
-                                    double* max_x, double* min_y,
-                                    double* max_y) const {
+    double* max_x, double* min_y,
+    double* max_y) const {
   *min_x = *min_y = 1. / 0.;
   *max_x = *max_y = -1. / 0.;
   FILE* points_file = fopen(file_name.c_str(), "w");
@@ -591,7 +660,7 @@ void DelaunayMesh::PlotPoints() const {
   fprintf(plot_file, "set xr [%lf : %lf]\n", min_x - xs, max_x + xs);
   fprintf(plot_file, "set yr [%lf : %lf]\n", min_y - ys, max_y + ys);
   fprintf(plot_file, "plot \"data_points\" using 1:2 with points pt 2"
-                     "title \"Points\" ");
+      "title \"Points\" ");
   fclose(plot_file);
   system("killall gnuplot");
   system("gnuplot -persist graph.conf");
@@ -607,9 +676,9 @@ bool DelaunayMesh::IsValidTriangle(const DelaunayTriangle& triangle) const {
     for (int point_id = 0; point_id < _points.size(); ++point_id) {
       if (!IsInfinitePoint(point_id) &&
           IsInsideCircumcircle(_points[point_id],
-                                GetPoint(triangle.point_ids[0]),
-                                GetPoint(triangle.point_ids[1]),
-                                GetPoint(triangle.point_ids[2]))) {
+            GetPoint(triangle.point_ids[0]),
+            GetPoint(triangle.point_ids[1]),
+            GetPoint(triangle.point_ids[2]))) {
         return false;
       }
     }
@@ -626,7 +695,7 @@ bool DelaunayMesh::IsValidDelaunay() const {
         printf("\nCheck done: Delaunay is incorrect!!\n\n");
         return false;
       }
-   }
+    }
   }
   printf("\nCheck done: Delaunay is correct!!\n\n");
   return true;
@@ -635,7 +704,8 @@ bool DelaunayMesh::IsValidDelaunay() const {
 
 void DelaunayMesh::PlotTriangulation(bool wrong_circles,
                                      bool rand_circles,
-                                     bool display_result) const {
+                                     bool display_result,
+                                     bool kill_other_plots) const {
   double min_x;
   double max_x;
   double min_y;
@@ -682,7 +752,7 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
           const Point& end_point = GetPoint(end_point_id);
           if (beg_point == end_point) {
             fprintf(stderr, "%.6f %.6f\n%.6f %.6f\n\n", beg_point.x,
-                    beg_point.y, end_point.x, end_point.y);
+                beg_point.y, end_point.x, end_point.y);
             fprintf(stderr, "%d %d\n", beg_point_id, end_point_id);
           }
           assert (beg_point != end_point);
@@ -691,7 +761,7 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
             // Plot file is linear in the number of points.
             if (_constrains.count(minMaxPair(beg_point_id, end_point_id))) {
               fprintf(plot_file, "set arrow from %lf,%lf to %lf,%lf as 2\n",
-                      beg_point.x, beg_point.y, end_point.x, end_point.y);
+                  beg_point.x, beg_point.y, end_point.x, end_point.y);
             } else {
               fprintf(plot_file, "set arrow from %lf,%lf to %lf,%lf as 1\n",
                   beg_point.x, beg_point.y, end_point.x, end_point.y);
@@ -710,10 +780,10 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
           Point center;
           double radius;
           Circumcircle(GetPoint(triangle.point_ids[0]),
-                       GetPoint(triangle.point_ids[1]),
-                       GetPoint(triangle.point_ids[2]), &center, &radius);
+              GetPoint(triangle.point_ids[1]),
+              GetPoint(triangle.point_ids[2]), &center, &radius);
           fprintf(circles_file, "%.4lf %.4lf %.4lf\n", center.x, center.y,
-                  radius);
+              radius);
 
           for (const int& point_id: triangle.point_ids) {
             const Point& point = GetPoint(point_id);
@@ -727,15 +797,15 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
             Point center;
             double radius;
             Circumcircle(GetPoint(triangle.point_ids[0]),
-                         GetPoint(triangle.point_ids[1]),
-                         GetPoint(triangle.point_ids[2]), &center, &radius);
+                GetPoint(triangle.point_ids[1]),
+                GetPoint(triangle.point_ids[2]), &center, &radius);
             fprintf(invalid_circles_file, "%.4lf %.4lf %.4lf\n", center.x,
-                    center.y, radius);
+                center.y, radius);
 
             for (const int& point_id: triangle.point_ids) {
               const Point& point = GetPoint(point_id);
               fprintf(invalid_circle_points_file, "%.4lf %.4lf\n", point.x,
-                      point.y);
+                  point.y);
             }
           }
         }
@@ -749,38 +819,93 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
 
   // Points plot command.
   fprintf(plot_file, "plot \"data_points\" using 1:2 with dots lc rgb \"black\""
-         " title \"Points\"");
+      " title \"Points\"");
 
   if(invalid_circles) {
     // Invalid circles plot command.
     fprintf(plot_file, ", \\\n     \"data_invalid_circles\" with circles lw 1"
-            " lc rgb \"red\", \\\n");
+        " lc rgb \"red\", \\\n");
 
     // Invalid circle points plot command.
     fprintf(plot_file, "     \"data_invalid_circle_points\" with points pt 7"
-            " lc rgb \"red\"");
+        " lc rgb \"red\"");
   }
 
   if(rand_circles) {
     // Rand circles plot command.
     fprintf(plot_file, ", \\\n     \"data_circles\" with circles lw 1 lc rgb"
-            " \"green\", \\\n");
+        " \"green\", \\\n");
 
     // Rand circle points plot command.
     fprintf(plot_file, "     \"data_circle_points\" with points pt 7 lc rgb"
-            " \"green\"");
+        " \"green\"");
   }
   //fprintf(plot_file, "\n");
   fclose(plot_file);
 
   if (display_result) {
-    system("killall gnuplot");
+    if (kill_other_plots) {
+      system("killall gnuplot");
+    }
     system("gnuplot -persist graph.conf");
   }
 }
 
+void DelaunayMesh::GetSafeCircle(int triangle_id, int side_id,
+                                 Point* center, double* radius) const {
+  assert (GetTriangleVal(triangle_id).triangle_child_ids.empty());
+  const DelaunayTriangle& triangle = GetTriangleVal(triangle_id);
+  int I = triangle.point_ids[side_id];
+  int J = triangle.point_ids[(side_id + 1) % 3];
+  int K = triangle.point_ids[(side_id + 2) % 3];
+  assert(!IsInfinitePoint(I));
+  assert(!IsInfinitePoint(J));
+  int neighbor_id = triangle.triangle_neighbor_ids[side_id];
+  assert (GetTriangleVal(neighbor_id).triangle_child_ids.empty() ||
+      !(std::cerr << "Tr_id: " << neighbor_id << " / " << _triangles.size()
+                  << " " << GetTriangleVal(neighbor_id).triangle_child_ids.size()
+                  << " " << GetTriangleVal(neighbor_id).triangle_child_ids[0]
+                  << " " << GetTriangleVal(neighbor_id).triangle_child_ids[1]
+                  << " " << GetTriangleVal(neighbor_id).triangle_child_ids[2]
+                  << std::endl));
+  int neighbor_side =  NeighborSide(neighbor_id, triangle_id);
+  int L = GetTriangleVal(neighbor_id).point_ids[(neighbor_side + 2) %3];
+  const Point pI = GetPoint(I);
+  const Point pJ = GetPoint(J);
+  const Point pK = GetPoint(K);
+  const Point pL = GetPoint(L);
+  *center = (pI + pJ) / 2;
+  *radius = center->Dist(pI);
+  bool ok = true;
+  if (!IsInfinitePoint(K)) {
+    ok &= Cmp(center->Dist(pK), *radius) >= 0;
+  }
+  if (ok && !IsInfinitePoint(L)) {
+    ok &= Cmp(center->Dist(pL), *radius) >= 0;
+  }
+  // Circle with diameter on the edge.
+  if (ok) {
+    return;
+  }
+  // Circles passing through circumcircles of adjacent neighbors.
+  assert(!(IsInfinitePoint(K) && IsInfinitePoint(L)));
+  *radius = 1./0.;
+  if (!IsInfinitePoint(K)) {
+    Circumcircle(pI, pJ, pK, center, radius);
+  }
+  if (!IsInfinitePoint(L)) {
+    Point qcenter;
+    double qradius;
+    Circumcircle(pI, pJ, pL, &qcenter, &qradius);
+    if (Cmp(qradius, *radius) < 0) {
+      *radius = qradius;
+      *center = qcenter;
+    }
+  }
+}
+
 void DelaunayMesh::GetSafeRegion(bool gnu_plot, int height, int width,
-                                 Mat* safe_region) const {
+    Mat* safe_region) const {
   FILE* safe_circles_file;
   if (gnu_plot) {
     safe_circles_file = fopen("data_safe_circles", "w");
@@ -809,61 +934,18 @@ void DelaunayMesh::GetSafeRegion(bool gnu_plot, int height, int width,
           // Makes sure that the edge is printed only once.
           if (I < J) {
             if (_constrains.count(minMaxPair(I, J))) {
-              int neighbor_id = triangle.triangle_neighbor_ids[side_id];
-              assert (GetTriangleVal(neighbor_id).triangle_child_ids.empty());
-              int neighbor_side =  NeighborSide(neighbor_id, triangle_id);
-              int L = GetTriangleVal(neighbor_id)
-                      .point_ids[(neighbor_side + 2) %3];
-              const Point pI = GetPoint(I);
-              const Point pJ = GetPoint(J);
-              const Point pK = GetPoint(K);
-              const Point pL = GetPoint(L);
-              Point center = (pI + pJ) / 2;
-              double radius = center.Dist(pI);
-              bool ok = true;
-              if (!IsInfinitePoint(K)) {
-                ok &= Cmp(center.Dist(pK), radius) >= 0;
-              }
-              if (ok && !IsInfinitePoint(L)) {
-                ok &= Cmp(center.Dist(pL), radius) >= 0;
-              }
-              // Circle with diameter on the edge.
-              if (ok) {
-                if (gnu_plot) {
-                  fprintf(safe_circles_file, "%.4lf %.4lf %.4lf\n", center.x,
-                          center.y, radius);
-                }
-                Pixel center_pixel = center.ToPixel(height);
-                // Draws the circle on safe_region.
-                cv::circle(*safe_region,
-                    cv::Point(center.x, height - 1 - center.y),
-                    radius+2, cv::Scalar(kSafeRegion), -1);
-                continue;
-              }
-              // Circles passing through circumcircles of adjacent neighbors.
-              assert(!(IsInfinitePoint(K) && IsInfinitePoint(L)));
-              radius = 1./0.;
-              if (!IsInfinitePoint(K)) {
-                Circumcircle(pI, pJ, pK, &center, &radius);
-              }
-              if (!IsInfinitePoint(L)) {
-                Point qcenter;
-                double qradius;
-                Circumcircle(pI, pJ, pL, &qcenter, &qradius);
-                if (Cmp(qradius, radius) < 0) {
-                  radius = qradius;
-                  center = qcenter;
-                }
-              }
+              Point center;
+              double radius;
+              GetSafeCircle(triangle_id, side_id, &center, &radius);
               if (gnu_plot) {
                 fprintf(safe_circles_file, "%.4lf %.4lf %.4lf\n", center.x,
-                        center.y, radius);
+                    center.y, radius);
               }
               Pixel center_pixel = center.ToPixel(height);
               // Draws the circle on safe_region.
               cv::circle(*safe_region,
-                         cv::Point(center.x, height - 1 - center.y),
-                         radius+2, cv::Scalar(kSafeRegion), -1);
+                  cv::Point(center.x, height - 1 - center.y),
+                  radius+2, cv::Scalar(kSafeRegion), -1);
             }
           }
         }
@@ -874,7 +956,7 @@ void DelaunayMesh::GetSafeRegion(bool gnu_plot, int height, int width,
   if (gnu_plot) {
     fclose(safe_circles_file);
     // Generates the plot configuration file for the triangle mesh.
-    PlotTriangulation(false, false, false);
+    PlotTriangulation(false, false, false, false);
 
     // Adding the plot safe circles command.
     FILE* plot_file = fopen("graph.conf", "a");
@@ -901,6 +983,262 @@ double DelaunayMesh::AverageInsertionCost() const {
 
 const cv::Mat& DelaunayMesh::GetSafeRegion() const {
   return _safe_region;
+}
+
+void DelaunayMesh::
+GetConstrainedPoints(vector<Point>* constrained_points) const {
+  vector<int> point_ids;
+  for (const auto& constrain: _constrains) {
+    point_ids.push_back(constrain.first.first);
+    point_ids.push_back(constrain.first.second);
+  }
+  sort(point_ids.begin(), point_ids.end());
+  point_ids.resize(unique(point_ids.begin(), point_ids.end())
+      - point_ids.begin());
+  constrained_points->clear();
+  for (int point_id: point_ids) {
+    constrained_points->push_back(GetPoint(point_id));
+  }
+}
+
+void DelaunayMesh::GetRandSafePoints(double fraction,
+    vector<Point>* safe_points) const {
+  // Obtains the safe region
+  int height = _safe_region.rows;
+  int width = _safe_region.cols;
+  vector< vector<bool> > visited(height, vector<bool> (width));
+
+  for (int row = 0; row < height; ++row) {
+    for (int col = 0; col < width; ++col) {
+      visited[row][col] = _safe_region.at<uchar>(row, col) == kSafeRegion;
+    }
+  }
+
+  safe_points->clear();
+  for (int row = 0; row < height; ++row) {
+    for (int col = 0; col < width; ++col) {
+      if (!visited[row][col]) {
+        vector<Point> inner_region_points;
+        stack< pair<int, int> > dfs;
+        dfs.push(make_pair(row, col));
+        visited[row][col] = true;
+        while (!dfs.empty()) {
+          int qrow = dfs.top().first;
+          int qcol = dfs.top().second;
+          dfs.pop();
+          inner_region_points.push_back(Pixel(qrow, qcol).ToPoint(height));
+          for (int dir = 0; dir < row_4nei.size(); ++dir) {
+            int nrow = qrow + row_4nei[dir];
+            int ncol = qcol + col_4nei[dir];
+            if (0 <= nrow && nrow < height &&
+                0 <= ncol && ncol < width && !visited[nrow][ncol]) {
+              visited[nrow][ncol] = true;
+              dfs.push(make_pair(nrow, ncol));
+            }
+          }
+        }
+        int sample = round(fraction * inner_region_points.size());
+        for (int i = 0; i < inner_region_points.size(); ++i) {
+          int p = rand() % (i + 1);
+          if (p < sample) {
+            swap(inner_region_points[p], inner_region_points[i]);
+          }
+        }
+        for (int i = 0; i < sample; ++i) {
+          safe_points->push_back(inner_region_points[i]);
+        }
+      }
+    }
+  }
+}
+
+
+void DelaunayMesh::
+     GetUnconstrainedAdjustedPoints(vector<Point>* adjusted_points) const {
+  adjusted_points->clear();
+  const int height = _safe_region.rows;
+  const int width = _safe_region.cols;
+  vector<bool> processed(_points.size(), false);
+  for (int triangle_id = 0 ; triangle_id < _triangles.size(); ++triangle_id) {
+    const DelaunayTriangle& triangle = GetTriangleVal(triangle_id);
+    if(triangle.triangle_child_ids.empty()) {
+      for (int side_id = 0; side_id < kTriangleSides; ++side_id) {
+        const int point_id = triangle.point_ids[side_id];
+        if ( movable_point_ids.count(point_id) == 1 && !processed[point_id]) {
+          processed[point_id] = true;
+          bool movable = true;
+          // Generates the polygon enclosing the point in counter-clockwise
+          // order.
+          // Stores (triangle_id, side_id) of the current point.
+          vector< pair<int, int> > neighbor_triangles;
+          int qtriangle_id = triangle_id;
+          int qside_id = side_id;
+          do {
+            neighbor_triangles.push_back(make_pair(qtriangle_id, qside_id));
+            // Determines if the point is movable.
+            int npoint_id = GetTriangleVal(qtriangle_id)
+              .point_ids[(qside_id + 1) % 3];
+            movable &= !IsInfinitePoint(npoint_id);
+            movable &= _constrains.count(minMaxPair(point_id, npoint_id)) == 0;
+            // Move to the next triangle.
+            qtriangle_id = GetTriangleVal(qtriangle_id)
+              .triangle_neighbor_ids[qside_id];
+            if (qtriangle_id == kNullId) {
+              assert(!movable);
+              break;
+            }
+            assert((qtriangle_id >= 0 && qtriangle_id < _triangles.size()) ||
+                !(std::cerr  << "Tr_id: " << qtriangle_id << std::endl));
+            assert(GetTriangleVal(qtriangle_id).triangle_child_ids.empty());
+            qside_id = 0;
+            while (GetTriangleVal(qtriangle_id).point_ids[qside_id]
+                      != point_id) {
+              ++qside_id;
+              assert(qside_id < 3);
+            }
+          } while(movable && qtriangle_id != triangle_id);
+
+          assert(movable);
+          assert(neighbor_triangles.size() > 2);
+
+          // Generates the actual points of the polygons.
+          vector<Point> polygon;
+          for (const pair<int, int>& neighbor_data: neighbor_triangles) {
+            const vector<int>& point_ids = GetTriangleVal(neighbor_data.first)
+                                           .point_ids;
+            for (int i = 0; i < point_ids.size(); ++i) {
+              assert(!IsInfinitePoint(point_ids[i]));
+            }
+            Point center;
+            double radius;
+            Circumcircle(GetPoint(point_ids[0]), GetPoint(point_ids[1]),
+                GetPoint(point_ids[2]), &center, &radius);
+            // The circumcircle can be outside the image region, but the polygon
+            // will be clipped to fit inside.
+            polygon.push_back(center);
+          }
+          // The set of line clips: (unit vector direction, line point), the
+          // region of the polygon to the right of the vector direction will be
+          // keep.
+          vector < pair<Point, Point> > clips = {
+            make_pair(Point(0, 1), Point(0, 0)),
+            make_pair(Point(1, 0), Point(0, height-1)),
+            make_pair(Point(0, -1), Point(width-1, height-1)),
+            make_pair(Point(-1, 0), Point(width-1, 0))
+          };
+          // Clips the voronoi polygon by the constrained edges.
+          for (const pair<int, int>& neighbor_data: neighbor_triangles) {
+            const int ntriangle_id = neighbor_data.first;
+            const int nside_id = neighbor_data.second;
+            assert(GetTriangleVal(ntriangle_id).point_ids[nside_id]
+                    == point_id);
+            const int point2_id = GetTriangleVal(ntriangle_id)
+                                  .point_ids[(nside_id + 1) % 3];
+            const int point3_id = GetTriangleVal(ntriangle_id)
+                                  .point_ids[(nside_id + 2) % 3];
+            if (_constrains.count(minMaxPair(point2_id, point3_id))) {
+              // Constrains clips.
+              Point safe_center;
+              double safe_radius;
+              GetSafeCircle(ntriangle_id, (nside_id + 1) % 3, &safe_center,
+                            &safe_radius);
+              const Point point2 = GetPoint(point2_id);
+              const Point point3 = GetPoint(point3_id);
+              const Point dir_vec = (point3 - point2).Unit();
+              // Offsets double error precision.
+              const Point clip_point = safe_center +
+                                       dir_vec.Ort()*-(safe_radius + 0.01);
+              clips.push_back(make_pair(dir_vec, clip_point));
+            }
+          }
+          for (const auto& clip: clips) {
+            const Point dir_vec = clip.first;
+            const Point clip_point = clip.second;
+            vector<Point> clipped_polygon;
+            vector<bool> inside(polygon.size());
+            for (int i = 0; i < polygon.size(); ++i) {
+              inside[i] = Cmp(dir_vec ^ (polygon[i] - clip_point), 0) < 0;
+            }
+            for (int i = 0; i < polygon.size(); ++i) {
+              if (inside[i]) {
+                clipped_polygon.push_back(polygon[i]);
+              }
+              int j = (i + 1) % polygon.size();
+              if (inside[i] ^ inside[j]) {
+                Point v = polygon[j] - polygon[i];
+                double t = ((polygon[i] - clip_point) * v.Ort()) /
+                           (dir_vec * v.Ort());
+                clipped_polygon.push_back(clip_point + dir_vec * t);
+              }
+            }
+
+            assert(clipped_polygon.size() != 1  &&
+                   clipped_polygon.size() != 2);
+
+            polygon = clipped_polygon;
+            if (polygon.empty()) {
+              break;
+            }
+          }
+          if (polygon.empty()) {
+            adjusted_points->push_back(GetPoint(point_id));
+          } else {
+            // Checks coordinates values.
+            for (Point point: polygon) {
+              assert((Cmp(point.x, 0) >= 0 &&
+                      Cmp(point.x, width-1) <= 0 &&
+                      Cmp(point.y, 0) >= 0 &&
+                      Cmp(point.y, height-1) <= 0) ||
+                     !(std::cerr<< point.x << " " << point.y << std::endl));
+            }
+            adjusted_points->push_back(Centroid(polygon));
+          }
+        }
+      }
+    }
+  }
+}
+
+void  DelaunayMesh::InsertSafePoints(const vector<Point>& safe_points) {
+  int height = _safe_region.rows;
+  int width = _safe_region.cols;
+  // The constrains should be preserved after insertion of the safe points.
+  PairSet initial_constrains;
+  PairSet final_constrains;
+  GetSatisfiedConstrains(&initial_constrains);
+  for (const Point& point: safe_points) {
+    assert((Cmp(point.x, 0) >= 0 &&
+          Cmp(point.x, width-1) <= 0 &&
+          Cmp(point.y, 0) >= 0 &&
+          Cmp(point.y, height-1) <= 0) ||
+        !(std::cerr<< point.x << " " << point.y << std::endl));
+    int point_id = PointId(point);
+    InsertPoint(point_id);
+    movable_point_ids.insert(point_id);
+  }
+  // Doesn't count the precise number of constrains since it might be the case
+  // that cocircular constrains inserted in different order might lead to
+  // unexpected behaviors.
+  GetSatisfiedConstrains(&final_constrains);
+  int count = 0;
+  for (const pair<int, int>& constrain: initial_constrains) {
+    //assert(final_constrains.count(constrain) > 0);
+    count += final_constrains.count(constrain) > 0;
+  }
+  // The value is defined experimentally.
+  assert(initial_constrains.size() - count <= 10);
+  printf("Number of inner points inserted: %d\n", (int)safe_points.size());
+  printf("Constrains: %d / %d\n", count, (int)initial_constrains.size());
+}
+
+void DelaunayMesh::GetMinimalConstrainSet(
+                   vector< pair<Point, Point> >* minimal_constrain_set) const {
+  minimal_constrain_set->clear();
+  for (const pair<pair<int, int>, int>& constrain: _constrains) {
+    minimal_constrain_set->push_back(
+                                make_pair(GetPoint(constrain.first.first),
+                                          GetPoint(constrain.first.second)));
+  }
 }
 
 }  // namespace mesh_generation
