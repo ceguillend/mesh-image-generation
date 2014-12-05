@@ -42,13 +42,22 @@ const int kKernelSize = 3;
 int component_size_threshold = 0;
 int curve_length_threshold = 0;
 int max_point_distance = 1;
-int max_segment_length;
+int max_segment_length = 50;
 const int kMaxPointDistance = 30;
+
+/**
+ * Mesh parameters.
+ */
+int background_fraction = 100;
+const int kMaxInputBackgroundFraction = 10000;
+const int kMaxBackgroundFraction = 100000;
+int cvt_iterations = 10;
+const int kMaxCvtIterations = 50;
 
 /**
  * Algorithm parameters.
  */
-int display_phase = 0;
+int display_phase = 6;
 const int kNumPhases = 6; // 0 .. kNumPhases
 // Involves a O(N^2) check.
 const bool kPlotWrongCircumcircle = false;
@@ -207,15 +216,43 @@ void PrintDenaulayStats (const DelaunayMesh& mesh) {
 }
 
 void MeshGeneration(int, void*) {
-  clock_t begin_time = clock();
-  DelaunayMesh mesh(image_source.rows, image_source.cols, simplified_curves,
-                    kNumSplitOperations);
-	// Verifies mesh correctness O(n^2).
-  clock_t end_time = clock();
-  assert(mesh.IsValidDelaunay());
-  mesh.PlotTriangulation(false, false, true);
+  //clock_t begin_time = clock();
+  const DelaunayMesh raw_mesh(image_source.rows, image_source.cols,
+                              simplified_curves, kNumSplitOperations);
+  assert(raw_mesh.IsValidDelaunay());
+  //clock_t end_time = clock();
+  //PrintTime("Delaunay Triangulation", (end_time-begin_time) / CLOCKS_PER_SEC);
 
-  PrintTime("Delaunay Triangulation", (end_time-begin_time) / CLOCKS_PER_SEC);
+  vector< pair<Point, Point> > minimal_constrain_set;
+  raw_mesh.GetMinimalConstrainSet(&minimal_constrain_set);
+
+  const DelaunayMesh border_mesh(image_source.rows, image_source.cols,
+                                 minimal_constrain_set);
+  vector<Point> safe_points;
+  double fraction = (double)background_fraction / kMaxBackgroundFraction;
+  border_mesh.GetRandSafePoints(fraction, &safe_points);
+
+  DelaunayMesh mesh = border_mesh;
+  mesh.InsertSafePoints(safe_points);
+  assert(mesh.IsValidDelaunay());
+
+  DelaunayMesh rand_mesh = mesh;
+  rand_mesh.PlotTriangulation(false, false, true, true);
+
+  for (int i = 0; i < cvt_iterations; ++i) {
+    vector<Point> adjusted_points;
+    mesh.GetUnconstrainedAdjustedPoints(&adjusted_points);
+    assert(adjusted_points.size() == safe_points.size() ||
+        !(std::cerr << "Adjusted points: " << adjusted_points.size() << endl
+                    << "Safe points:     " << safe_points.size() << endl));
+
+    mesh = border_mesh;
+    mesh.InsertSafePoints(adjusted_points);
+    assert(mesh.IsValidDelaunay());
+  }
+
+  mesh.PlotTriangulation(false, false, true, false);
+
   PrintDenaulayStats(mesh);
   imshow(kWindowResult, mesh.GetSafeRegion());
 }
@@ -246,7 +283,7 @@ int main( int argc, char** argv ) {
 	createTrackbar("Canny Threshold", "", &low_threshold, kMaxLowThreshold,
                     mesh_generation::CurvesGeneration);
 
-  max_segment_length =
+  const int kMaxSegmentLength =
       sqrt(mesh_generation::Sqr(mesh_generation::image_source.rows) +
             mesh_generation::Sqr(mesh_generation::image_source.cols));
 
@@ -254,25 +291,36 @@ int main( int argc, char** argv ) {
   // component size.
 	createTrackbar("Component Size Threshold", "",
                     &component_size_threshold,
-                    max_segment_length, mesh_generation::CurvesGeneration);
+                    kMaxSegmentLength, mesh_generation::CurvesGeneration);
 
   // Creates a trackbar to define the minimum curve length allowed.
 	createTrackbar("Min Curve Length", "",
-                    &curve_length_threshold, max_segment_length,
+                    &curve_length_threshold, kMaxSegmentLength,
                     mesh_generation::CurvesGeneration);
 
 
 	// Creates a trackbar for user to enter the maximum allowed segment length.
 	createTrackbar("Max Segment Length", "", &max_segment_length,
-                    max_segment_length, mesh_generation::CurvesGeneration);
+                    kMaxSegmentLength, mesh_generation::CurvesGeneration);
 
 	// Creates a trackbar for user to enter the maximum allowed distance to the
   // simplified curve.
 	createTrackbar("Max Point Distance", "", &max_point_distance,
                      kMaxPointDistance, mesh_generation::CurvesGeneration);
 
+
+  // Creates a trackbar that allows the user define the fraction of the
+  // background to be used as inner points, to find the actual franction
+  // this value is divided by kMaxBackgroundFraction .
+  createTrackbar("Inner Point Fraction", "", &background_fraction,
+                 kMaxInputBackgroundFraction, nullptr);
+
+  createTrackbar("CVT iterations", "", &cvt_iterations,
+                 kMaxCvtIterations, nullptr);
+
   // Runs the algorithm, withe the paremets
   cv::createButton("Mesh Processing", mesh_generation::MeshGeneration);
+
 
 	// Show the image
 	mesh_generation::CurvesGeneration(0, nullptr);
