@@ -124,5 +124,12 @@ Point MeanPoint(const vector<Point>& points);
  */
 Point Centroid(const vector<Point>& points);
 
+/**
+ * Computes the barycentric coordinates (u, v, w) for point p with respect to
+ * triangle (a, b, c).
+ */
+void Barycentric(const Point p, const Point a, const Point b, const Point c,
+                 double* u, double* v, double* w);
+
 }  // namespace mesh_generation
 #endif

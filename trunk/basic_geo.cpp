@@ -163,4 +163,20 @@ Point Centroid(const vector<Point>& points) {
   return Point(cx, cy);
 }
 
+void Barycentric(const Point p, const Point a, const Point b, const Point c,
+                 double* u, double* v, double* w) {
+    const Point v0 = b - a;
+    const Point v1 = c - a;
+    const Point v2 = p - a;
+    const double d00 = v0 * v0;
+    const double d01 = v0 * v1;
+    const double d11 = v1 * v1;
+    const double d20 = v2 * v0;
+    const double d21 = v2 * v1;
+    const double denom = d00 * d11 - d01 * d01;
+    *v = (d11 * d20 - d01 * d21) / denom;
+    *w = (d00 * d21 - d01 * d20) / denom;
+    *u = 1.0 - *v - *w;
+}
+
 }  // namespace mesh_generation

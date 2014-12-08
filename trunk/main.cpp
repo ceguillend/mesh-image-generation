@@ -70,6 +70,11 @@ const bool kGnuDisplaySafeCircles = true;
 // Number of fixing splits.
 const int kNumSplitOperations = 5;
 
+/**
+ * Controllers.
+ */
+bool mesh_generated = false;
+
 namespace mesh_generation {
 
 /**
@@ -112,6 +117,10 @@ Mat image_point_curve;
  */
 list< vector<Point> > simplified_curves;
 
+/**
+ * Holds the delaunay mesh.
+ */
+DelaunayMesh mesh;
 
 void write_process()
 {
@@ -228,16 +237,18 @@ void MeshGeneration(int, void*) {
 
   const DelaunayMesh border_mesh(image_source.rows, image_source.cols,
                                  minimal_constrain_set);
+  border_mesh.PlotTriangulation(false, false, true, true);
+  assert(border_mesh.IsValidDelaunay());
+
   vector<Point> safe_points;
   double fraction = (double)background_fraction / kMaxBackgroundFraction;
   border_mesh.GetRandSafePoints(fraction, &safe_points);
 
-  DelaunayMesh mesh = border_mesh;
+  mesh = border_mesh;
   mesh.InsertSafePoints(safe_points);
   assert(mesh.IsValidDelaunay());
 
-  DelaunayMesh rand_mesh = mesh;
-  rand_mesh.PlotTriangulation(false, false, true, true);
+  mesh.PlotTriangulation(false, false, true, false);
 
   for (int i = 0; i < cvt_iterations; ++i) {
     vector<Point> adjusted_points;
@@ -255,7 +266,18 @@ void MeshGeneration(int, void*) {
 
   PrintDenaulayStats(mesh);
   imshow(kWindowResult, mesh.GetSafeRegion());
+  mesh_generated = true;
 }
+
+void MeshInterpolation(int, void*) {
+  if (!mesh_generated) {
+    return;
+  }
+  Mat interpolation;
+  mesh.GetMeshInterpolation(image_source, &interpolation);
+  imshow(kWindowResult, interpolation);
+}
+
 }  // namespace mesh_generation
 
 int main( int argc, char** argv ) {
@@ -318,9 +340,11 @@ int main( int argc, char** argv ) {
   createTrackbar("CVT iterations", "", &cvt_iterations,
                  kMaxCvtIterations, nullptr);
 
-  // Runs the algorithm, withe the paremets
+  // Runs the mesh generation algorithm.
   cv::createButton("Mesh Processing", mesh_generation::MeshGeneration);
 
+  // Runs the image_interpolation of the mesh generated.
+  cv::createButton("Interpolate!", mesh_generation::MeshInterpolation);
 
 	// Show the image
 	mesh_generation::CurvesGeneration(0, nullptr);
