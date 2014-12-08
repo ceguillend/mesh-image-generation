@@ -6,6 +6,7 @@
 
 using cv::Mat;
 using cv::Vec3b;
+using cv::Vec3d;
 using std::list;
 using std::max;
 using std::make_pair;
@@ -14,6 +15,7 @@ using std::pair;
 using std::stack;
 using std::string;
 using std::swap;
+using std::unordered_map;
 using std::vector;
 
 const int kTriangleSides = 3;
@@ -29,12 +31,85 @@ const int kSafeRegion = 255;
  */
 const vector<int> row_4nei =  {1,-1,0,0};
 const vector<int> col_4nei =  {0,0,1,-1};
+/**
+ * Color neighborhood size.
+ */
+const int kColorNeighborhood = 3;
+
+/**
+ * Defines a Vec3b hashing.
+ */
+namespace std {
+  template<>
+    struct hash<Vec3b> {
+      size_t operator ()(const Vec3b& color) const {
+        int value = 0;
+        for (int i = 0; i < 3; ++i) {
+          value <<= 8;
+          value += color.val[i];
+        }
+        return std::hash<int>()(value);
+      }
+    };
+}  // namespace std
 
 namespace {
-pair<int, int> minMaxPair(int a, int b) {
+/**
+ * Canonical pair representation.
+ */
+pair<int, int> MinMaxPair(int a, int b) {
   return make_pair(min(a, b), max(a,b));
 }
+
+/**
+ * Given an image and a set of pixels, finds the most frequent color. If
+ * the set of pixels is empty returns false
+ */
+bool GetDominantColor(const Mat& source_image,
+                      const vector<mesh_generation::Pixel>& pixel_group,
+                      Vec3b* color) {
+  if (pixel_group.empty()) {
+    return false;
+  }
+  unordered_map<Vec3b, int> color_occurrences;
+  for (const auto& pixel: pixel_group) {
+    Vec3b pixel_color = source_image.at<Vec3b>(pixel.row, pixel.col);
+    int var[3];
+    for (var[0] = -kColorNeighborhood;
+        var[0] <= kColorNeighborhood; ++var[0]) {
+      for (var[1] = -kColorNeighborhood;
+          var[1] <= kColorNeighborhood; ++var[1]) {
+        for (var[2] = -kColorNeighborhood;
+            var[2] <= kColorNeighborhood; ++var[2]) {
+          int ncolor[3];
+          bool valid = true;
+          for (int i = 0; i < 3 && valid; ++i) {
+            ncolor[i] = pixel_color.val[i] + var[i];
+            if (ncolor[i] < 0 || ncolor[i] >= 256) {
+              valid = false;
+            }
+          }
+          if (valid) {
+            ++color_occurrences[Vec3b(ncolor[0], ncolor[1], ncolor[2])];
+          }
+        }
+      }
+    }
+  }
+  int max_occurrence = 0;
+  for (const auto& pixel: pixel_group) {
+    Vec3b pixel_color = source_image.at<Vec3b>(pixel.row, pixel.col);
+    const int& color_occurrence = color_occurrences[pixel_color];
+    if (max_occurrence < color_occurrence) {
+      max_occurrence = color_occurrence;
+      *color = pixel_color;
+    }
+  }
+  return true;
+}
 }  // namespace
+
+
 
 namespace mesh_generation {
 
@@ -78,8 +153,8 @@ DelaunayMesh::DelaunayMesh(int height, int width,
         int point1 = PointId(curve[i]);
         int point2 = PointId(curve[i - 1]);
         assert(point1 != point2);
-        _constrains[minMaxPair(point1, point2)] = num_split_operations;
-        _unsatisfied_constrains.insert(minMaxPair(point1, point2));
+        _constrains[MinMaxPair(point1, point2)] = num_split_operations;
+        _unsatisfied_constrains.insert(MinMaxPair(point1, point2));
       }
     }
   }
@@ -103,8 +178,8 @@ DelaunayMesh::DelaunayMesh(int height, int width,
     auto it = _unsatisfied_constrains.begin();
     assert(!IsInfinitePoint(it->first) && !IsInfinitePoint(it->second));
     int new_point = PointId((GetPoint(it->first) + GetPoint(it->second)) / 2);
-    _constrains[minMaxPair(new_point, it->first)] = _constrains[*it] - 1;
-    _constrains[minMaxPair(new_point, it->second)] = _constrains[*it] - 1;
+    _constrains[MinMaxPair(new_point, it->first)] = _constrains[*it] - 1;
+    _constrains[MinMaxPair(new_point, it->second)] = _constrains[*it] - 1;
     _constrains[*it] = 0;
     _unsatisfied_constrains.erase(it);
     //  Inserts the point to the delaunay triangulation.
@@ -147,7 +222,7 @@ DelaunayMesh::DelaunayMesh(int height, int width,
     int point1_id = PointId(constrain.first);
     int point2_id = PointId(constrain.second);
     // Does not allow splitting procedures.
-    _constrains[minMaxPair(point1_id, point2_id)] = 0;
+    _constrains[MinMaxPair(point1_id, point2_id)] = 0;
   }
   vector<int> point_ids;
   for (int point_id = 3; point_id < _points.size(); ++point_id) {
@@ -166,7 +241,7 @@ DelaunayMesh::DelaunayMesh(int height, int width,
   for (const pair<Point, Point>& constrain: segment_constrains) {
     int point1_id = PointId(constrain.first);
     int point2_id = PointId(constrain.second);
-    bool valid = satisfied_constrains.count(minMaxPair(point1_id, point2_id));
+    bool valid = satisfied_constrains.count(MinMaxPair(point1_id, point2_id));
     constrains_preserved += valid;
     /*
     assert(valid || !(std::cerr << width << " " << height << std::endl
@@ -428,11 +503,11 @@ void DelaunayMesh::LegalizeSide(int triangle_id, int side_index) {
       GetTriangleRef(split_triangle).triangle_child_ids = triangle_children;
     }
     // Updates the constrains information.
-    _unsatisfied_constrains.erase(minMaxPair(K, L));
-    const auto it = _constrains.find(minMaxPair(I, J));
+    _unsatisfied_constrains.erase(MinMaxPair(K, L));
+    const auto it = _constrains.find(MinMaxPair(I, J));
     if (it != _constrains.end() && it->second > 0) {
       if (!IsInfinitePoint(I) && !IsInfinitePoint(J)) {
-        _unsatisfied_constrains.insert(minMaxPair(I, J));
+        _unsatisfied_constrains.insert(MinMaxPair(I, J));
       }
     }
     // Expands legalization.
@@ -503,10 +578,10 @@ void DelaunayMesh::InsertBorderPoint(int triangle_id, int point_id,
 
     // Updates constrains.
     _unsatisfied_constrains
-      .erase(minMaxPair(point_id,
+      .erase(MinMaxPair(point_id,
             current_triangle.point_ids[current_side]));
     _unsatisfied_constrains
-      .erase(minMaxPair(point_id,
+      .erase(MinMaxPair(point_id,
             current_triangle.point_ids[(current_side + 2) % 3]));
   }
   vector<int> edge_points = {
@@ -515,13 +590,13 @@ void DelaunayMesh::InsertBorderPoint(int triangle_id, int point_id,
   };
 
   // Check removed edge, for the constrains processing.
-  const pair<int, int> rm_edge = minMaxPair(edge_points[0], edge_points[1]);
+  const pair<int, int> rm_edge = MinMaxPair(edge_points[0], edge_points[1]);
   const auto it = _constrains.find(rm_edge);
   if (it != _constrains.end()) {
     if (it->second > 0) {
       // replaces the constrain.
       for (int i = 0; i < edge_points.size(); ++i) {
-        const pair<int, int> new_edge = minMaxPair(point_id, edge_points[i]);
+        const pair<int, int> new_edge = MinMaxPair(point_id, edge_points[i]);
         _constrains[new_edge] = max(_constrains[new_edge], it->second);
       }
     }
@@ -572,7 +647,7 @@ void DelaunayMesh::InsertInnerPoint(int triangle_id, int point_id) {
   // Updates constrains.
   for (int i = 0; i < kTriangleSides; ++i) {
     _unsatisfied_constrains
-      .erase(minMaxPair(point_id, GetTriangleVal(triangle_id).point_ids[i]));
+      .erase(MinMaxPair(point_id, GetTriangleVal(triangle_id).point_ids[i]));
   }
   // Legalize edges.
   for (int triangle_child: triangle_children) {
@@ -614,7 +689,7 @@ void DelaunayMesh::GetSatisfiedConstrains(PairSet* satisfied_constrains) const {
             fprintf(stderr, "%d %d\n", beg_point_id, end_point_id);
           }
           assert (beg_point != end_point);
-          const auto segment = minMaxPair(beg_point_id, end_point_id);
+          const auto segment = MinMaxPair(beg_point_id, end_point_id);
           // Makes sure that the edge is printed only once.
           if (beg_point_id < end_point_id && _constrains.count(segment)) {
             satisfied_constrains->insert(segment);
@@ -761,7 +836,7 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
           // Makes sure that the edge is printed only once.
           if (beg_point_id < end_point_id) {
             // Plot file is linear in the number of points.
-            if (_constrains.count(minMaxPair(beg_point_id, end_point_id))) {
+            if (_constrains.count(MinMaxPair(beg_point_id, end_point_id))) {
               fprintf(plot_file, "set arrow from %lf,%lf to %lf,%lf as 2\n",
                   beg_point.x, beg_point.y, end_point.x, end_point.y);
             } else {
@@ -935,7 +1010,7 @@ void DelaunayMesh::GetSafeRegion(bool gnu_plot, int height, int width,
           assert (beg_point != end_point);
           // Makes sure that the edge is printed only once.
           if (I < J) {
-            if (_constrains.count(minMaxPair(I, J))) {
+            if (_constrains.count(MinMaxPair(I, J))) {
               Point center;
               double radius;
               GetSafeCircle(triangle_id, side_id, &center, &radius);
@@ -1081,7 +1156,7 @@ void DelaunayMesh::
             int npoint_id = GetTriangleVal(qtriangle_id)
               .point_ids[(qside_id + 1) % 3];
             movable &= !IsInfinitePoint(npoint_id);
-            movable &= _constrains.count(minMaxPair(point_id, npoint_id)) == 0;
+            movable &= _constrains.count(MinMaxPair(point_id, npoint_id)) == 0;
             // Move to the next triangle.
             qtriangle_id = GetTriangleVal(qtriangle_id)
               .triangle_neighbor_ids[qside_id];
@@ -1138,7 +1213,7 @@ void DelaunayMesh::
                                   .point_ids[(nside_id + 1) % 3];
             const int point3_id = GetTriangleVal(ntriangle_id)
                                   .point_ids[(nside_id + 2) % 3];
-            if (_constrains.count(minMaxPair(point2_id, point3_id))) {
+            if (_constrains.count(MinMaxPair(point2_id, point3_id))) {
               // Constrains clips.
               Point safe_center;
               double safe_radius;
@@ -1243,53 +1318,113 @@ void DelaunayMesh::GetMinimalConstrainSet(
   }
 }
 
-void DelaunayMesh::GetMeshInterpolation(const cv::Mat& source_image,
+void DelaunayMesh::GetMeshSolidInterpolation(const cv::Mat& source_image,
                                         cv::Mat* interpolation) const {
   printf("Generating the interpolation ...\n");
   int height = _safe_region.rows;
   int width = _safe_region.cols;
   assert(source_image.rows == height && source_image.cols == width);
   *interpolation = Mat::zeros(height, width, CV_8UC3);
+  unordered_map<int, vector<Pixel> > pixel_partitions;
+
+  // Groups the pixels in triangles.
   for (int row = 0; row < height; ++row) {
     for (int col = 0; col < width; ++col) {
-      Point qpoint = Pixel(row, col).ToPoint(height);
-      int triangle_id = FindEnclosingTriangle(qpoint);
-      const vector<int>& point_ids = GetTriangleVal(triangle_id).point_ids;
-      vector<Point> points;
-      vector<Vec3b> colors;
-      for (int i = 0; i < point_ids.size(); ++i) {
-        if (!IsInfinitePoint(point_ids[i])) {
-          points.push_back(GetPoint(point_ids[i]));
-          Pixel pixel = points.back().ToPixel(height);
-          colors.push_back(source_image.at<Vec3b>(pixel.row, pixel.col));
+      Pixel pixel = Pixel(row, col);
+      int triangle_id = FindEnclosingTriangle(pixel.ToPoint(height));
+      pixel_partitions[triangle_id].push_back(pixel);
+    }
+  }
+
+  // For each triangle calculates the interpolation.
+  for (const auto& triangle_partition: pixel_partitions) {
+    const vector<Pixel>& pixels = triangle_partition.second;
+    Vec3b color;
+    assert(GetDominantColor(source_image, pixels, &color));
+    for (const auto& pixel: pixels) {
+      interpolation->at<Vec3b>(pixel.row, pixel.col) = color;
+    }
+  }
+  printf("Interpolation completed!!\n\n");
+}
+
+void DelaunayMesh::GetMeshLinearInterpolation(const cv::Mat& source_image,
+    cv::Mat* interpolation) const {
+  printf("Generating the interpolation ...\n");
+  int height = _safe_region.rows;
+  int width = _safe_region.cols;
+  assert(source_image.rows == height && source_image.cols == width);
+  *interpolation = Mat::zeros(height, width, CV_8UC3);
+  unordered_map<int, vector<Pixel> > pixel_partitions;
+
+  // Groups the pixels in triangles.
+  for (int row = 0; row < height; ++row) {
+    for (int col = 0; col < width; ++col) {
+      Pixel pixel = Pixel(row, col);
+      int triangle_id = FindEnclosingTriangle(pixel.ToPoint(height));
+      pixel_partitions[triangle_id].push_back(pixel);
+    }
+  }
+
+  // For each triangle calculates the interpolation.
+  for (const auto& triangle_partition: pixel_partitions) {
+    const int triangle_id  = triangle_partition.first;
+    const vector<Pixel>& pixels = triangle_partition.second;
+    const vector<int>& point_ids = GetTriangleVal(triangle_id).point_ids;
+
+    // Vertices properties.
+    vector<Point> points;
+    for (int i = 0; i < point_ids.size(); ++i) {
+      if (!IsInfinitePoint(point_ids[i])) {
+        points.push_back(GetPoint(point_ids[i]));
+      }
+    }
+    vector< vector<Pixel> > pixel_groups(points.size(), vector<Pixel>());
+    for (const Pixel& pixel: pixels) {
+      int closest_point = -1;
+      double distance = 1./0.;
+      for (int i = 0; i < points.size(); ++i) {
+        double qdistance = points[i].Dist(pixel.ToPoint(height));
+        if (qdistance < distance) {
+          distance = qdistance;
+          closest_point = i;
         }
       }
-      assert(!points.empty());
+      assert(closest_point != -1);
+      pixel_groups[closest_point].push_back(pixel);
+    }
+    vector<Vec3b> colors;
+    // Determines the color of each triangle vertex.
+    for (int i = 0; i < points.size(); ++i ) {
+      Vec3b color;
+      if (GetDominantColor(source_image, pixel_groups[i], &color)) {
+        colors.push_back(color);
+      }
+    }
+    while (colors.size() != points.size()) {
+      colors.push_back(colors.back());
+    }
+    // Assigns the colors to each pixel.
+    for (const Pixel& pixel: pixels) {
+      Point point = pixel.ToPoint(height);
       if (points.size() == 1) {
-        interpolation->at<Vec3b>(row, col) = colors[0];
+        interpolation->at<Vec3b>(pixel.row, pixel.col) = colors[0];
       } else if (points.size() == 2) {
-        double d1 = qpoint.Dist(points[0]);
-        double d2 = qpoint.Dist(points[1]);
+        double d1 = point.Dist(points[0]);
+        double d2 = point.Dist(points[1]);
         double f1 = d1 / (d1 + d2);
         double f2 = d2 / (d1 + d2);
-        for (int i = 0; i < 3; ++i) {
-          interpolation->at<Vec3b>(row, col).val[i] = colors[0].val[i]*f1 +
-                                                      colors[1].val[i]*f2;
-        }
+        interpolation->at<Vec3b>(pixel.row, pixel.col) = Vec3d(colors[0]) * f1 +
+                                                         Vec3d(colors[1]) * f2;
       } else if (points.size() == 3) {
         // Barycentric coordinates of the point.
         double bc[3];
-        Barycentric(qpoint, points[0], points[1], points[2], bc, bc + 1, bc + 2);
-        Point centroid(0, 0);
-        for (int i = 0 ; i < points.size(); ++i) {
-          centroid = centroid + points[i];
-        }
-        centroid = centroid / 3;
-        for (int i = 0 ; i < points.size(); ++i) {
-          Pixel query = ((points[i]*3 + centroid)/4).ToPixel(height);
-          colors[i] = source_image.at<Vec3b>(query.row, query.col);
-          interpolation->at<Vec3b>(row, col) += colors[i] * bc[i];
-        }
+        Barycentric(point, points[0], points[1], points[2], bc, bc + 1,
+                    bc + 2);
+        interpolation->at<Vec3b>(pixel.row, pixel.col) =
+            Vec3d(colors[0]) * bc[0] +
+            Vec3d(colors[1]) * bc[1] +
+            Vec3d(colors[2]) * bc[2];
       } else {
         assert (false);
       }
@@ -1297,5 +1432,4 @@ void DelaunayMesh::GetMeshInterpolation(const cv::Mat& source_image,
   }
   printf("Interpolation completed!!\n\n");
 }
-
 }  // namespace mesh_generation

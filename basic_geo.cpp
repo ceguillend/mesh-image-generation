@@ -174,8 +174,8 @@ void Barycentric(const Point p, const Point a, const Point b, const Point c,
     const double d20 = v2 * v0;
     const double d21 = v2 * v1;
     const double denom = d00 * d11 - d01 * d01;
-    *v = (d11 * d20 - d01 * d21) / denom;
-    *w = (d00 * d21 - d01 * d20) / denom;
+    *v = fabs((d11 * d20 - d01 * d21) / denom);
+    *w = fabs((d00 * d21 - d01 * d20) / denom);
     *u = 1.0 - *v - *w;
 }
 
