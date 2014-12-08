@@ -271,10 +271,11 @@ void MeshGeneration(int, void*) {
 
 void MeshInterpolation(int, void*) {
   if (!mesh_generated) {
+    printf("No mesh has been generated !!");
     return;
   }
   Mat interpolation;
-  mesh.GetMeshInterpolation(image_source, &interpolation);
+  mesh.GetMeshLinearInterpolation(image_source, &interpolation);
   imshow(kWindowResult, interpolation);
 }
 
