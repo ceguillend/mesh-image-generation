@@ -5,6 +5,7 @@
 #include <stack>
 
 using cv::Mat;
+using cv::Vec3b;
 using std::list;
 using std::max;
 using std::make_pair;
@@ -275,14 +276,15 @@ bool DelaunayMesh::BelongsTriangleBorder(const Point& point, int triangle_id,
   return false;
 }
 
-int DelaunayMesh::FindEnclosingTriangle(const Point& point) {
-  int triangle_id = kTriangleRoot; // root
+int DelaunayMesh::FindEnclosingTriangle(const Point& point) const {
+  // Starts at the triangle root.
+  int triangle_id = kTriangleRoot;
 
   while (!GetTriangleVal(triangle_id).triangle_child_ids.empty()) {
     int next_triangle_id = kNullId;
     for (int child_triangle_id :
               GetTriangleVal(triangle_id).triangle_child_ids) {
-      ++_total_query_operations;
+      //++_total_query_operations;
       if (IsInsideTriangle(child_triangle_id, point)) {
         next_triangle_id = child_triangle_id;
         break;
@@ -1239,6 +1241,61 @@ void DelaunayMesh::GetMinimalConstrainSet(
                                 make_pair(GetPoint(constrain.first.first),
                                           GetPoint(constrain.first.second)));
   }
+}
+
+void DelaunayMesh::GetMeshInterpolation(const cv::Mat& source_image,
+                                        cv::Mat* interpolation) const {
+  printf("Generating the interpolation ...\n");
+  int height = _safe_region.rows;
+  int width = _safe_region.cols;
+  assert(source_image.rows == height && source_image.cols == width);
+  *interpolation = Mat::zeros(height, width, CV_8UC3);
+  for (int row = 0; row < height; ++row) {
+    for (int col = 0; col < width; ++col) {
+      Point qpoint = Pixel(row, col).ToPoint(height);
+      int triangle_id = FindEnclosingTriangle(qpoint);
+      const vector<int>& point_ids = GetTriangleVal(triangle_id).point_ids;
+      vector<Point> points;
+      vector<Vec3b> colors;
+      for (int i = 0; i < point_ids.size(); ++i) {
+        if (!IsInfinitePoint(point_ids[i])) {
+          points.push_back(GetPoint(point_ids[i]));
+          Pixel pixel = points.back().ToPixel(height);
+          colors.push_back(source_image.at<Vec3b>(pixel.row, pixel.col));
+        }
+      }
+      assert(!points.empty());
+      if (points.size() == 1) {
+        interpolation->at<Vec3b>(row, col) = colors[0];
+      } else if (points.size() == 2) {
+        double d1 = qpoint.Dist(points[0]);
+        double d2 = qpoint.Dist(points[1]);
+        double f1 = d1 / (d1 + d2);
+        double f2 = d2 / (d1 + d2);
+        for (int i = 0; i < 3; ++i) {
+          interpolation->at<Vec3b>(row, col).val[i] = colors[0].val[i]*f1 +
+                                                      colors[1].val[i]*f2;
+        }
+      } else if (points.size() == 3) {
+        // Barycentric coordinates of the point.
+        double bc[3];
+        Barycentric(qpoint, points[0], points[1], points[2], bc, bc + 1, bc + 2);
+        Point centroid(0, 0);
+        for (int i = 0 ; i < points.size(); ++i) {
+          centroid = centroid + points[i];
+        }
+        centroid = centroid / 3;
+        for (int i = 0 ; i < points.size(); ++i) {
+          Pixel query = ((points[i]*3 + centroid)/4).ToPixel(height);
+          colors[i] = source_image.at<Vec3b>(query.row, query.col);
+          interpolation->at<Vec3b>(row, col) += colors[i] * bc[i];
+        }
+      } else {
+        assert (false);
+      }
+    }
+  }
+  printf("Interpolation completed!!\n\n");
 }
 
 }  // namespace mesh_generation
