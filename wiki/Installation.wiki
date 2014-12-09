@@ -1,4 +1,4 @@
-#Describes the dependencies to build the project
+#summary Describes the dependencies to build the project
 
 = Dependencies =
 
