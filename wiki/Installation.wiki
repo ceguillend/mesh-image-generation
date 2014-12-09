@@ -1,4 +1,4 @@
-#summary One-sentence summary of this page.
+#Describes the dependencies to build the project
 
 = Dependencies =
 
