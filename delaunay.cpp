@@ -725,7 +725,7 @@ void DelaunayMesh::PlotPoints() const {
   double max_x;
   double min_y;
   double max_y;
-  SavePointsToFile("data_points", &min_x, &max_x, &min_y, &max_y);
+  SavePointsToFile("points.data", &min_x, &max_x, &min_y, &max_y);
   // Defines the plotting commands.
   FILE* plot_file = fopen("graph.conf", "w");
   fprintf(plot_file, "set xtic auto\nset ytic auto\n");
@@ -736,7 +736,7 @@ void DelaunayMesh::PlotPoints() const {
 
   fprintf(plot_file, "set xr [%lf : %lf]\n", min_x - xs, max_x + xs);
   fprintf(plot_file, "set yr [%lf : %lf]\n", min_y - ys, max_y + ys);
-  fprintf(plot_file, "plot \"data_points\" using 1:2 with points pt 2"
+  fprintf(plot_file, "plot \"points.data\" using 1:2 with points pt 2"
       "title \"Points\" ");
   fclose(plot_file);
   system("killall gnuplot");
@@ -787,7 +787,7 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
   double max_x;
   double min_y;
   double max_y;
-  SavePointsToFile("data_points", &min_x, &max_x, &min_y, &max_y);
+  SavePointsToFile("points.data", &min_x, &max_x, &min_y, &max_y);
 
   FILE* plot_file = fopen("graph.conf", "w");
 
@@ -806,13 +806,13 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
   fprintf(plot_file, "set style arrow 2 nohead ls 2\n");
 
   // Contains the center of the circle and radius.
-  FILE* circles_file = fopen("data_circles","w");
+  FILE* circles_file = fopen("circles.data","w");
   // Contains the points that generates the circle.
-  FILE* circle_points_file = fopen("data_circle_points","w");
+  FILE* circle_points_file = fopen("circle_points.data","w");
   // Contains the data of invalid circles.
-  FILE* invalid_circles_file = fopen("data_invalid_circles","w");
+  FILE* invalid_circles_file = fopen("invalid_circles.data","w");
   // Contains the data of the points of invalid circles.
-  FILE* invalid_circle_points_file = fopen("data_invalid_circle_points","w");
+  FILE* invalid_circle_points_file = fopen("invalid_circle_points.data","w");
   // Checks if there exist invalid circles.
   bool invalid_circles = false;
 
@@ -895,26 +895,26 @@ void DelaunayMesh::PlotTriangulation(bool wrong_circles,
   fclose(invalid_circle_points_file);
 
   // Points plot command.
-  fprintf(plot_file, "plot \"data_points\" using 1:2 with dots lc rgb \"black\""
+  fprintf(plot_file, "plot \"points.data\" using 1:2 with dots lc rgb \"black\""
       " title \"Points\"");
 
   if(invalid_circles) {
     // Invalid circles plot command.
-    fprintf(plot_file, ", \\\n     \"data_invalid_circles\" with circles lw 1"
+    fprintf(plot_file, ", \\\n     \"invalid_circles.data\" with circles lw 1"
         " lc rgb \"red\", \\\n");
 
     // Invalid circle points plot command.
-    fprintf(plot_file, "     \"data_invalid_circle_points\" with points pt 7"
+    fprintf(plot_file, "     \"invalid_circle_points.data\" with points pt 7"
         " lc rgb \"red\"");
   }
 
   if(rand_circles) {
     // Rand circles plot command.
-    fprintf(plot_file, ", \\\n     \"data_circles\" with circles lw 1 lc rgb"
+    fprintf(plot_file, ", \\\n     \"circles.data\" with circles lw 1 lc rgb"
         " \"green\", \\\n");
 
     // Rand circle points plot command.
-    fprintf(plot_file, "     \"data_circle_points\" with points pt 7 lc rgb"
+    fprintf(plot_file, "     \"circle_points.data\" with points pt 7 lc rgb"
         " \"green\"");
   }
   //fprintf(plot_file, "\n");
@@ -985,7 +985,7 @@ void DelaunayMesh::GetSafeRegion(bool gnu_plot, int height, int width,
     Mat* safe_region) const {
   FILE* safe_circles_file;
   if (gnu_plot) {
-    safe_circles_file = fopen("data_safe_circles", "w");
+    safe_circles_file = fopen("safe_circles.data", "w");
   }
   *safe_region = Mat::zeros(height, width, CV_8UC1);
   // Appends the safe circle information to the plot configuartion file.
@@ -1037,7 +1037,7 @@ void DelaunayMesh::GetSafeRegion(bool gnu_plot, int height, int width,
 
     // Adding the plot safe circles command.
     FILE* plot_file = fopen("graph.conf", "a");
-    fprintf(plot_file, ", \\\n     \"data_safe_circles\" with circles lw 1"
+    fprintf(plot_file, ", \\\n     \"safe_circles.data\" with circles lw 1"
         " lc rgb \"red\" fill solid noborder");
     fclose(plot_file);
 
